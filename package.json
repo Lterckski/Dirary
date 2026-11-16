@@ -1,0 +1,18 @@
+{
+  "name": "dirary",
+  "private": true,
+  "packageManager": "pnpm@12.21.0",
+  "scripts": {
+    "dev:web": "pnpm --filter @dirary/web dev",
+    "dev:mobile": "pnpm --filter @dirary/mobile start",
+    "build": "pnpm --filter @dirary/web build",
+    "typecheck": "pnpm -r typecheck",
+    "test": "pnpm -r --if-present test",
+    "mascot:export": "tsx tools/mascot/export-pngs.ts"
+  },
+  "devDependencies": {
+    "typescript": "~6.0.3",
+    "tsx": "^4.23.15",
+    "@resvg/resvg-js": "^2.6.2"
+  }
+}
