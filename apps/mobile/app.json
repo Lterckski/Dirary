@@ -34,17 +34,36 @@
         {
           "widgets": [
             {
-              "name": "InkTest",
-              "label": "Ink (test)",
-              "description": "Phase 0 test widget: Ink says hello.",
-              "minWidth": "180dp",
+              "name": "TodayTasks",
+              "label": "Today's tasks",
+              "description": "Tick off today's tasks and add new ones.",
+              "minWidth": "250dp",
               "minHeight": "110dp",
-              "targetCellWidth": 3,
+              "targetCellWidth": 4,
               "targetCellHeight": 2,
-              "previewImage": "./assets/widgets/ink-test-preview.png",
+              "resizeMode": "horizontal|vertical",
+              "previewImage": "./assets/widgets/today-tasks-preview.png",
+              "updatePeriodMillis": 1800000
+            },
+            {
+              "name": "InkProgress",
+              "label": "Ink's progress",
+              "description": "Ink cheers as you finish today's tasks.",
+              "minWidth": "110dp",
+              "minHeight": "110dp",
+              "targetCellWidth": 2,
+              "targetCellHeight": 2,
+              "previewImage": "./assets/widgets/ink-progress-preview.png",
               "updatePeriodMillis": 1800000
             }
           ]
+        }
+      ],
+      [
+        "expo-notifications",
+        {
+          "color": "#7C83FF",
+          "defaultChannel": "task-reminders"
         }
       ]
     ],

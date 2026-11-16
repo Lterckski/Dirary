@@ -31,5 +31,6 @@ png(framed('happy', { bg: colors.inkBlue, scale: 0.86 }), 1024, 'apps/mobile/ass
 png(framed('happy', { scale: 0.58 }), 1024, 'apps/mobile/assets/images/android-icon-foreground.png');
 png(`<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 240 240"><rect width="240" height="240" fill="${colors.inkBlue}"/></svg>`, 1024, 'apps/mobile/assets/images/android-icon-background.png');
 png(framed('happy'), 512, 'apps/mobile/assets/images/splash-icon.png');
-png(framed('happy', { bg: colors.inkBlue, scale: 0.9, round: true }), 400, 'apps/mobile/assets/widgets/ink-test-preview.png');
+png(framed('happy', { bg: colors.inkBlue, scale: 0.9, round: true }), 400, 'apps/mobile/assets/widgets/today-tasks-preview.png');
+png(framed('cheer', { bg: colors.inkBlue, scale: 0.9 }), 400, 'apps/mobile/assets/widgets/ink-progress-preview.png');
 png(framed('happy', { bg: colors.inkBlue, scale: 0.9, round: true }), 192, 'apps/web/public/favicon.png');

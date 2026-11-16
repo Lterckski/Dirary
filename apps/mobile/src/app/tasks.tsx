@@ -1,5 +1,225 @@
-import { ComingSoon } from '@/components/coming-soon';
+import AsyncStorage from '@react-native-async-storage/async-storage';
+import * as Haptics from 'expo-haptics';
+import { useLocalSearchParams } from 'expo-router';
+import { useEffect, useMemo, useRef, useState, type ComponentRef } from 'react';
+import { Pressable, ScrollView, TextInput, View } from 'react-native';
+import { colors, radius, space } from '@dirary/ui';
+import {
+  GROUPINGS, GROUPING_LABEL, PRIORITY_LABEL, RECURRENCE_LABEL, TaskDraft, addDays, dayLabel, defaultReminder, doneView, groupTasks, listView, localDate, parseQuickAdd,
+  remindAt, timeLabel, todayCoach, todayView, upcomingView, type Grouping, type Task,
+} from '@dirary/shared';
+
+import { Mascot } from '@/components/mascot';
+import { Chip, Group, Segmented, TaskRow } from '@/components/task-bits';
+import { ListsEditor, TaskEditor } from '@/components/task-editor';
+import { Button, Card, Text, styles } from '@/components/ui';
+import { requestReminderPermission } from '@/lib/reminders';
+import { addList, addTask, removeList, removeTask, renameList, toggleTask, updateTask, useTasksStore } from '@/lib/tasks-store';
+
+type View_ = 'today' | 'upcoming' | 'inbox' | 'done' | string; // any other string is a list id
+const FIXED_VIEWS = ['today', 'upcoming', 'inbox', 'done'];
+const toLocal = (iso: string) => localDate(new Date(iso));
 
 export default function TasksScreen() {
-  return <ComingSoon phase="Phase 1" line="Ink is resting until Phase 1. Your to-do list lands here first." />;
+  const { tasks, lists, loading, message } = useTasksStore();
+  const params = useLocalSearchParams<{ add?: string }>();
+  const input = useRef<ComponentRef<typeof TextInput>>(null);
+  const [view, setView] = useState<View_>('today');
+  const [text, setText] = useState('');
+  const [editing, setEditing] = useState<Task | null>(null);
+  const [managing, setManaging] = useState(false);
+  const [justCompleted, setJustCompleted] = useState(false);
+  const [, setTick] = useState(0);
+  const [grouping, setGroupingState] = useState<Grouping>('time');
+  const today = localDate();
+
+  // The chosen grouping is remembered on this phone.
+  useEffect(() => {
+    AsyncStorage.getItem('dirary.todayGrouping').then((saved) => {
+      if ((GROUPINGS as readonly string[]).includes(saved ?? '')) setGroupingState(saved as Grouping);
+    }).catch(() => {});
+  }, []);
+  const setGrouping = (g: Grouping) => {
+    setGroupingState(g);
+    AsyncStorage.setItem('dirary.todayGrouping', g).catch(() => {});
+  };
+
+  // Redraw once a minute so "in 3 hours" and the date stay right.
+  useEffect(() => {
+    const timer = setInterval(() => setTick((n) => n + 1), 60_000);
+    return () => clearInterval(timer);
+  }, []);
+  // The widget's + button opens the app with ?add=1: put the cursor in the box.
+  useEffect(() => {
+    if (params.add) setTimeout(() => input.current?.focus(), 300);
+  }, [params.add]);
+
+  const listIds = useMemo(() => new Set(lists.map((l) => l.id)), [lists]);
+  const listById = useMemo(() => new Map(lists.map((l) => [l.id, l])), [lists]);
+  const activeList = listById.get(view);
+  useEffect(() => {
+    if (!FIXED_VIEWS.includes(view) && !loading && !listIds.has(view)) setView('today');
+  }, [view, loading, listIds]);
+
+  const todayData = useMemo(() => todayView(tasks, today, toLocal), [tasks, today]);
+  const coach = todayCoach(todayData, justCompleted);
+
+  // Words in the text ("tomorrow 5pm !high every week") set the date, time, urgency and repeat.
+  const read = parseQuickAdd(text, new Date(), lists);
+  const fallbackDate = view === 'today' ? today : view === 'upcoming' ? addDays(today, 1) : null;
+  const dueDate = read.due_date ?? (read.due_time ? today : fallbackDate);
+  const understood = [
+    read.due_date || read.due_time ? [dueDate ? dayLabel(dueDate, today) : null, read.due_time ? timeLabel(read.due_time) : null].filter(Boolean).join(', ') : null,
+    read.priority ? `${PRIORITY_LABEL[read.priority]} urgency` : null,
+    read.recurrence ? RECURRENCE_LABEL[read.recurrence].toLowerCase() : null,
+    read.list_id ? `in ${listById.get(read.list_id)?.name}` : null,
+  ].filter(Boolean);
+
+  async function add() {
+    const draft = TaskDraft.safeParse({
+      title: read.title, notes: null, due_date: dueDate, due_time: read.due_time, priority: read.priority, list_id: read.list_id ?? activeList?.id ?? null,
+      remind_at: remindAt(dueDate, read.due_time, defaultReminder(read.due_time)), recurrence_rule: read.recurrence,
+    });
+    if (!draft.success) return;
+    setText('');
+    if (draft.data.remind_at) await requestReminderPermission();
+    await addTask(draft.data);
+  }
+
+  function toggle(task: Task) {
+    if (task.status !== 'done') {
+      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+      setJustCompleted(true);
+      setTimeout(() => setJustCompleted(false), 2500);
+    }
+    toggleTask(task);
+  }
+
+  const row = (task: Task, showDay: boolean) => (
+    <TaskRow key={task.id} task={task} list={task.list_id ? listById.get(task.list_id) : undefined} today={today} showDay={showDay} onToggle={toggle} onOpen={setEditing} />
+  );
+  const empty = (line: string) => (
+    <Card style={{ alignItems: 'center', paddingVertical: space[8] }}>
+      <Mascot mood="sleepy" size={128} />
+      <Text muted style={{ textAlign: 'center' }}>{line}</Text>
+    </Card>
+  );
+
+  let body;
+  if (loading) body = <Text muted>Loading your tasks…</Text>;
+  else if (view === 'today') {
+    const { overdue, dueToday, doneToday, total, done } = todayData;
+    const percent = total === 0 ? 0 : Math.round((done / total) * 100);
+    body = (
+      <>
+        <Card>
+          <View style={[styles.row, { justifyContent: 'space-between', alignItems: 'baseline' }]}>
+            <Text variant="hero" style={{ fontVariant: ['tabular-nums'] }}>
+              {done}<Text variant="heading" muted> of {total} done</Text>
+            </Text>
+            <Text weight="bold" style={{ color: colors.inkBlue, fontVariant: ['tabular-nums'] }}>{percent}%</Text>
+          </View>
+          <View
+            accessibilityRole="progressbar" accessibilityLabel="Tasks done today" accessibilityValue={{ min: 0, max: 100, now: percent }}
+            style={{ height: 12, borderRadius: radius.pill, backgroundColor: colors.line, overflow: 'hidden' }}>
+            <View style={{ width: `${percent}%`, height: 12, borderRadius: radius.pill, backgroundColor: colors.inkBlue }} />
+          </View>
+          <View style={styles.row}>
+            <View style={{ width: 60, height: 60, borderRadius: 30, backgroundColor: colors.inkBlue, alignItems: 'center', justifyContent: 'center' }}>
+              <Mascot mood={coach.mood} size={52} />
+            </View>
+            <Text style={{ flex: 1 }} accessibilityLiveRegion="polite">{coach.line}</Text>
+          </View>
+        </Card>
+        {overdue.length > 0 && <Group title="Overdue" red>{overdue.map((t) => row(t, true))}</Group>}
+        {dueToday.length > 0 && (
+          <View style={[styles.row, { justifyContent: 'space-between', marginBottom: -space[2] }]}>
+            <Text variant="small" weight="semi" style={{ color: colors.faint, letterSpacing: 1, paddingLeft: 4 }}>TODAY</Text>
+            <Segmented label="Group by" options={GROUPINGS} labels={GROUPING_LABEL} value={grouping} onChange={setGrouping} />
+          </View>
+        )}
+        {groupTasks(dueToday, grouping, lists).map((g) => <Group key={g.key} title={g.title} sub>{g.tasks.map((t) => row(t, false))}</Group>)}
+        {doneToday.length > 0 && (
+          <Pressable accessibilityRole="button" onPress={() => setView('done')} style={{ minHeight: 48, justifyContent: 'center', paddingHorizontal: 4 }}>
+            <Text variant="label" muted>{doneToday.length} done today · <Text variant="label" weight="semi" style={{ color: colors.inkBlue }}>View</Text></Text>
+          </Pressable>
+        )}
+      </>
+    );
+  } else if (view === 'upcoming') {
+    const groups = upcomingView(tasks, today);
+    body = groups.length === 0
+      ? empty('Nothing coming up in the next two weeks.')
+      : groups.map((g) => <Group key={g.date} title={dayLabel(g.date, today)}>{g.tasks.map((t) => row(t, false))}</Group>);
+  } else if (view === 'done') {
+    const groups = doneView(tasks, today, toLocal);
+    body = groups.length === 0
+      ? empty('Nothing finished in the last 30 days yet. Tick a task and it lands here.')
+      : (
+        <>
+          {groups.map((g) => <Group key={g.date} title={dayLabel(g.date, today)}>{g.tasks.map((t) => row(t, false))}</Group>)}
+          <Text variant="label" muted>Showing the last 30 days. Untick a task to move it back.</Text>
+        </>
+      );
+  } else {
+    const { open, done } = listView(tasks, view === 'inbox' ? null : view, listIds);
+    body = open.length === 0
+      ? empty(done.length > 0 ? 'All done here. Finished tasks are in the Done tab.' : view === 'inbox' ? 'Your Inbox is empty. Tasks without a list land here.' : 'No tasks in this list yet.')
+      : <Group title="To do">{open.map((t) => row(t, true))}</Group>;
+  }
+
+  return (
+    <View style={styles.screen}>
+      <ScrollView contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
+        <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: space[2] }} style={{ marginHorizontal: -space[5] }}>
+          <View style={{ width: space[5] - space[2] }} />
+          <Chip label="Today" active={view === 'today'} onPress={() => setView('today')} count={todayData.overdue.length + todayData.dueToday.length} />
+          <Chip label="Upcoming" active={view === 'upcoming'} onPress={() => setView('upcoming')} />
+          <Chip label="Inbox" active={view === 'inbox'} onPress={() => setView('inbox')} />
+          {lists.map((l) => <Chip key={l.id} label={l.name} dot={l.color} active={view === l.id} onPress={() => setView(l.id)} />)}
+          <Chip label="Done" active={view === 'done'} onPress={() => setView('done')} />
+          <Chip dashed label="Edit lists" onPress={() => setManaging(true)} />
+          <View style={{ width: space[5] - space[2] }} />
+        </ScrollView>
+
+        {view !== 'done' && <View style={{ gap: space[2] }}>
+          <View style={styles.row}>
+            <TextInput
+              ref={input} accessibilityLabel="New task" style={[styles.input, { flex: 1 }]} value={text} maxLength={200}
+              placeholder={activeList ? `Add to ${activeList.name}` : 'Add a task'} placeholderTextColor={colors.faint}
+              onChangeText={setText} onSubmitEditing={add} returnKeyType="done" submitBehavior="submit" />
+            <Button primary label="Add" disabled={!text.trim()} onPress={add} />
+          </View>
+          <Text variant="label" style={{ color: colors.faint, paddingLeft: 4 }}>
+            {understood.length > 0
+              ? <>Adds “{read.title}” · <Text variant="label" weight="semi" style={{ color: colors.inkBlue }}>{understood.join(' · ')}</Text></>
+              : 'Try “Submit lab report tomorrow 5pm !high #school”.'}
+          </Text>
+        </View>}
+
+        {!!message && <Text variant="label" style={{ color: colors.amber }} accessibilityLiveRegion="polite">{message}</Text>}
+        {body}
+      </ScrollView>
+
+      {editing && (
+        <TaskEditor
+          task={editing} lists={lists}
+          onClose={() => setEditing(null)}
+          onSave={async (draft) => {
+            const target = editing;
+            setEditing(null);
+            if (draft.remind_at) await requestReminderPermission();
+            await updateTask(target, draft);
+          }}
+          onDelete={() => { removeTask(editing); setEditing(null); }}
+        />
+      )}
+      {managing && (
+        <ListsEditor
+          lists={lists} onClose={() => setManaging(false)}
+          onAdd={(name, color) => addList(name, color, lists.length)} onRename={renameList} onDelete={removeList}
+        />
+      )}
+    </View>
+  );
 }

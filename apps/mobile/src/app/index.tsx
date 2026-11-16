@@ -8,6 +8,7 @@ import { Mascot, StaticMascot } from '@/components/mascot';
 import { Button, Card, Text, styles } from '@/components/ui';
 import { addNote, listNotes, pendingCount, syncNow } from '@/lib/sync';
 import { supabase } from '@/lib/supabase';
+import { signOutAndClear } from '@/lib/tasks-store';
 
 const MOOD_LINES: Record<MascotMood, string> = {
   happy: 'Default on home, widgets and the app icon.',
@@ -53,7 +54,7 @@ export default function TodayScreen() {
       </Card>
 
       <SyncTest />
-      <Button label="Sign out" onPress={() => supabase?.auth.signOut()} />
+      <Button label="Sign out" onPress={() => { signOutAndClear(); }} />
     </ScrollView>
   );
 }
