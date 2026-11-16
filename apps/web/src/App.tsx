@@ -3,6 +3,7 @@ import { HealthIcon, MoneyIcon, TasksIcon, TodayIcon } from './icons';
 import { Mascot } from './Mascot';
 import { ComingSoon } from './pages/ComingSoon';
 import { SetupNeeded, SignIn } from './pages/SignIn';
+import { Money } from './pages/Money';
 import { Tasks } from './pages/Tasks';
 import { Today } from './pages/Today';
 import { supabase } from './supabase';
@@ -33,7 +34,7 @@ export function App() {
         <Routes>
           <Route path="/" element={<Today />} />
           <Route path="/tasks" element={<Tasks />} />
-          <Route path="/money" element={<ComingSoon title="Money" phase="Phase 2" line="Budgets and auto-logged spending arrive in Phase 2." />} />
+          <Route path="/money" element={<Money />} />
           <Route path="/health" element={<ComingSoon title="Health" phase="Phase 3" line="Meals and workouts arrive in Phase 3." />} />
         </Routes>
       </main>

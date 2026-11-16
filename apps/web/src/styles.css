@@ -175,3 +175,29 @@ input[type='date'].input, input[type='time'].input { cursor: pointer; }
 .done-link { align-self: flex-start; min-height: 44px; padding: 0 6px; background: none; border: none; color: var(--muted); font-size: 14px; cursor: pointer; }
 .done-link span { color: var(--inkBlue); font-weight: 600; }
 .done-link:hover span { text-decoration: underline; }
+
+/* ---- Money (Phase 2) ---- */
+.money-in { font-size: 14px; font-variant-numeric: tabular-nums; }
+.bar.over div { background: var(--red); }
+.bar.thin { height: 8px; }
+.accounts { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 8px; }
+.account { display: flex; flex-direction: column; gap: 4px; padding: 14px 16px; border-radius: var(--r-lg); background: var(--surface); border: 1px solid var(--line); }
+.account-balance { font-size: 22px; font-variant-numeric: tabular-nums; }
+.group-title.amber { color: var(--amber); }
+.task.tx { padding: 6px 14px; gap: 10px; }
+.task.suggestion { padding: 6px 14px; gap: 10px; border-color: var(--amber); }
+.amount { flex: none; font-weight: 700; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.amount.in { color: var(--inkBlue); }
+.amount.late, .task-meta.late { color: var(--red); }
+.btn.small { min-height: 40px; padding: 0 16px; font-size: 14px; flex: none; }
+.budgets { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 8px; }
+.budget { display: flex; flex-direction: column; gap: 8px; padding: 14px 16px; border-radius: var(--r-lg); background: var(--surface); border: 1px solid var(--line); }
+.money-field { flex: 0 0 120px; width: 120px; min-width: 0; text-align: right; font-variant-numeric: tabular-nums; }
+.field.toggle { border: none; margin: 0; padding: 0; }
+.field.toggle legend { padding: 0; margin-bottom: 6px; }
+.field.toggle .segmented { align-self: flex-start; min-height: 48px; }
+.field.toggle .segmented button { min-height: 40px; }
+.input.file { padding: 10px 12px; }
+.chip:disabled { opacity: 0.45; cursor: default; }
+.quick #money-quick { flex: 1 1 100%; }
+@media (max-width: 480px) { .task.tx { flex-wrap: nowrap; } .task.tx .task-main { flex-basis: 0; } }
