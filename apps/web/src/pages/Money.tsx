@@ -7,7 +7,8 @@ import {
 import { confettiFrom } from '../confetti';
 import { Mascot, MascotPaws } from '../Mascot';
 import { useMoney, type MoneyStore } from '../money/useMoney';
-import { Modal, openPicker } from '../ui';
+import { DateTimePicker } from '../pickers';
+import { Modal } from '../ui';
 
 /** Who the app greets. Dirary is a one-person app. */
 const GREETING_NAME = 'Luther';
@@ -536,9 +537,7 @@ function TxDialog({ tx, categoryId: startCategory, direction: startDirection, ac
             <input className="input" value={merchant} maxLength={120} placeholder={direction === 'in' ? 'Mama, work, refund' : 'Jollibee'} onChange={(e) => setMerchant(e.target.value)} />
           </label>
         </div>
-        <label className="field">When
-          <input className="input" type="datetime-local" value={when} onClick={openPicker} onChange={(e) => setWhen(e.target.value)} required />
-        </label>
+        <DateTimePicker label="When" value={when} onChange={setWhen} />
         <label className="field">Note
           <input className="input" value={note} maxLength={500} onChange={(e) => setNote(e.target.value)} />
         </label>
@@ -727,10 +726,8 @@ function TransferDialog({ store, onClose }: { store: MoneyStore; onClose: () => 
           <label className="field">Amount (₱)
             <input className="input" inputMode="decimal" value={amount} onChange={(e) => setAmount(e.target.value)} autoFocus />
           </label>
-          <label className="field">When
-            <input className="input" type="datetime-local" value={when} onClick={openPicker} onChange={(e) => setWhen(e.target.value)} required />
-          </label>
         </div>
+        <DateTimePicker label="When" value={when} onChange={setWhen} />
         {problem && <p className="note error" role="alert">{problem}</p>}
         <div className="actions"><span className="grow" /><button type="button" className="btn" onClick={onClose}>Cancel</button><button type="submit" className="btn primary">Transfer</button></div>
       </form>

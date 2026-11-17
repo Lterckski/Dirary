@@ -6,7 +6,8 @@ import {
 } from '@dirary/shared';
 import { confettiFrom } from '../confetti';
 import { Mascot } from '../Mascot';
-import { Modal, openPicker } from '../ui';
+import { DatePicker, TimePicker } from '../pickers';
+import { Modal } from '../ui';
 import { useTasks } from '../tasks/useTasks';
 
 type View = 'today' | 'upcoming' | 'inbox' | 'done' | string; // any other string is a list id
@@ -359,10 +360,8 @@ function QuickAdd({ defaultDate, listId, placeholder, lists, onAdd }: { defaultD
     <form className="quick" onSubmit={submit}>
       <label className="sr-only" htmlFor="quick-title">New task</label>
       <input id="quick-title" className="input grow" value={text} maxLength={200} placeholder={placeholder} onChange={(e) => setText(e.target.value)} autoComplete="off" aria-describedby="quick-hint" />
-      <label className="sr-only" htmlFor="quick-date">Due date</label>
-      <input id="quick-date" className="input date" type="date" value={date} onClick={openPicker} onChange={(e) => setDate(e.target.value)} />
-      <label className="sr-only" htmlFor="quick-time">Time</label>
-      <input id="quick-time" className="input date" type="time" value={time} onClick={openPicker} onChange={(e) => setTime(e.target.value)} />
+      <DatePicker className="date" label="Due date" hideLabel value={date} onChange={setDate} />
+      <TimePicker className="date" label="Time" hideLabel value={time} onChange={setTime} />
       <label className="sr-only" htmlFor="quick-urgency">Urgency</label>
       <select id="quick-urgency" className={`input urgency-pick u${priority}`} value={priority} onChange={(e) => setPriority(Number(e.target.value) as Priority)}>
         {PRIORITIES.map((p) => <option key={p} value={p}>{p === 0 ? 'Urgency' : PRIORITY_LABEL[p]}</option>)}
@@ -410,12 +409,8 @@ function TaskDialog({ task, lists, onClose, onSave, onDelete }: { task: Task; li
           <textarea className="input area" value={notes} maxLength={2000} rows={3} onChange={(e) => setNotes(e.target.value)} />
         </label>
         <div className="two">
-          <label className="field">Due date
-            <input className="input" type="date" value={date} onClick={openPicker} onChange={(e) => { setDate(e.target.value); if (!e.target.value) setTime(''); }} />
-          </label>
-          <label className="field">Time
-            <input className="input" type="time" value={time} onClick={openPicker} onChange={(e) => { setTime(e.target.value); if (e.target.value && !date) setDate(localDate()); if (e.target.value && reminder === 'none') setReminder('at'); }} />
-          </label>
+          <DatePicker label="Due date" placeholder="No date" value={date} onChange={(v) => { setDate(v); if (!v) setTime(''); }} />
+          <TimePicker label="Time" placeholder="No time" value={time} onChange={(v) => { setTime(v); if (v && !date) setDate(localDate()); if (v && reminder === 'none') setReminder('at'); }} />
         </div>
         <div className="two">
           <label className="field">Urgency
