@@ -256,7 +256,12 @@ export function Money() {
 
           <section className="group" aria-label="Recent transactions">
             {days.length === 0 ? (
-              <section className="card empty"><Mascot mood="sleepy" size={128} /><p className="muted">No transactions yet. Add one above, like “250 jollibee #food @gcash”.</p></section>
+              <section className="card empty">
+                <Mascot mood="sleepy" size={128} />
+                {/* The quick-add box sits above this list on phones and in the other column on wide screens, so point at it with a button, not a direction. */}
+                <p className="muted">No transactions yet. Type one in the quick-add box, like “250 jollibee #food @gcash”.</p>
+                <button type="button" className="btn primary" onClick={() => { const box = document.getElementById('money-quick'); box?.scrollIntoView({ block: 'center', behavior: 'smooth' }); box?.focus({ preventScroll: true }); }}>Add your first one</button>
+              </section>
             ) : days.map((d) => (
               <div key={d.date} className="group">
                 <h2 className="group-title">{dayLabel(d.date, today)}</h2>
