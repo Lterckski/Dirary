@@ -2,9 +2,9 @@ import { createElement } from 'react';
 import { Platform } from 'react-native';
 import { requestWidgetUpdate } from 'react-native-android-widget';
 import { widgetData } from './data';
-import { InkProgressWidget, TodayTasksWidget } from './TodayTasksWidget';
+import { InkProgressWidget, TodaySpendWidget, TodayTasksWidget } from './TodayTasksWidget';
 
-export const WIDGETS = { TodayTasks: TodayTasksWidget, InkProgress: InkProgressWidget } as const;
+export const WIDGETS = { TodayTasks: TodayTasksWidget, InkProgress: InkProgressWidget, TodaySpend: TodaySpendWidget } as const;
 export type WidgetName = keyof typeof WIDGETS;
 
 /** Redraws every Dirary widget on the home screen. Called after any task change. */

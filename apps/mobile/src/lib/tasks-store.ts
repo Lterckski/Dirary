@@ -7,6 +7,7 @@ import { LISTS_TABLE, TASKS_TABLE, completeTask, localDate, reopenTask, type Lis
 import { clearLocal, pendingCount, readLists, readTasks, saveLocal, syncAll } from './db';
 import { refreshReminders } from './reminders';
 import { supabase } from './supabase';
+import { clearCaptures } from '../../modules/dirary-capture';
 import { refreshWidgets } from '../widgets/refresh';
 
 const now = () => new Date().toISOString();
@@ -15,6 +16,12 @@ let syncMessage = '';
 
 function emit() {
   for (const listener of listeners) listener();
+}
+
+/** Lets other stores (money) redraw when a sync brings in changes. Returns the unsubscribe function. */
+export function subscribeStore(listener: () => void): () => void {
+  listeners.add(listener);
+  return () => { listeners.delete(listener); };
 }
 
 /** After any change: redraw screens, reschedule reminders, redraw widgets, and sync. */
@@ -102,6 +109,7 @@ export async function signOutAndClear(): Promise<void> {
   await syncTasks();
   await supabase?.auth.signOut();
   await clearLocal();
+  clearCaptures(); // captured notification text belongs to the account that was signed in
   await refreshReminders([]).catch(() => {});
   await refreshWidgets().catch(() => {});
   emit();

@@ -34,3 +34,4 @@ png(framed('happy'), 512, 'apps/mobile/assets/images/splash-icon.png');
 png(framed('happy', { bg: colors.inkBlue, scale: 0.9, round: true }), 400, 'apps/mobile/assets/widgets/today-tasks-preview.png');
 png(framed('cheer', { bg: colors.inkBlue, scale: 0.9 }), 400, 'apps/mobile/assets/widgets/ink-progress-preview.png');
 png(framed('happy', { bg: colors.inkBlue, scale: 0.9, round: true }), 192, 'apps/web/public/favicon.png');
+png(framed('coach', { bg: colors.inkBlue, scale: 0.9 }), 400, 'apps/mobile/assets/widgets/today-spend-preview.png');

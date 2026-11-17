@@ -7,17 +7,24 @@
  */
 import * as SQLite from 'expo-sqlite';
 import type { SupabaseClient } from '@supabase/supabase-js';
-import { LISTS_TABLE, LIST_COLUMNS, TASKS_TABLE, TASK_COLUMNS, remoteWins, type List, type Task } from '@dirary/shared';
+import {
+  ACCOUNTS_TABLE, ACCOUNT_COLUMNS, CATEGORIES_TABLE, CATEGORY_COLUMNS, LISTS_TABLE, LIST_COLUMNS, TASKS_TABLE, TASK_COLUMNS, TRANSACTIONS_TABLE,
+  TRANSACTION_COLUMNS, remoteWins, type Account, type Category, type List, type Task, type Transaction,
+} from '@dirary/shared';
 
 type Row = Record<string, string | number | null>;
 interface TableDef { name: string; select: string; columns: string[] }
 
 const cols = (select: string) => select.split(',').map((c) => c.trim());
-// Lists sync before tasks, because a task may point at a list.
+// Order matters: a task may point at a list, and a transaction at an account and a category.
 const TABLES: TableDef[] = [
   { name: LISTS_TABLE, select: LIST_COLUMNS, columns: cols(LIST_COLUMNS) },
   { name: TASKS_TABLE, select: TASK_COLUMNS, columns: cols(TASK_COLUMNS) },
+  { name: ACCOUNTS_TABLE, select: ACCOUNT_COLUMNS, columns: cols(ACCOUNT_COLUMNS) },
+  { name: CATEGORIES_TABLE, select: CATEGORY_COLUMNS, columns: cols(CATEGORY_COLUMNS) },
+  { name: TRANSACTIONS_TABLE, select: TRANSACTION_COLUMNS, columns: cols(TRANSACTION_COLUMNS) },
 ];
+export type SyncedTable = typeof LISTS_TABLE | typeof TASKS_TABLE | typeof ACCOUNTS_TABLE | typeof CATEGORIES_TABLE | typeof TRANSACTIONS_TABLE;
 /** Re-read a little before the cursor, so a change stamped by a device with a slow clock isn't missed. */
 const OVERLAP_MS = 10 * 60 * 1000;
 
@@ -38,6 +45,21 @@ export function db(): Promise<SQLite.SQLiteDatabase> {
         created_at TEXT NOT NULL, updated_at TEXT NOT NULL, deleted_at TEXT, dirty INTEGER NOT NULL DEFAULT 0
       );
       CREATE INDEX IF NOT EXISTS tasks_due_idx ON tasks (due_date);
+      CREATE TABLE IF NOT EXISTS accounts (
+        id TEXT PRIMARY KEY NOT NULL, name TEXT NOT NULL, institution TEXT NOT NULL, opening_balance_centavos INTEGER NOT NULL DEFAULT 0,
+        sort_order INTEGER NOT NULL DEFAULT 0, created_at TEXT NOT NULL, updated_at TEXT NOT NULL, deleted_at TEXT, dirty INTEGER NOT NULL DEFAULT 0
+      );
+      CREATE TABLE IF NOT EXISTS categories (
+        id TEXT PRIMARY KEY NOT NULL, name TEXT NOT NULL, kind TEXT NOT NULL, color TEXT NOT NULL, monthly_limit_centavos INTEGER,
+        sort_order INTEGER NOT NULL DEFAULT 0, created_at TEXT NOT NULL, updated_at TEXT NOT NULL, deleted_at TEXT, dirty INTEGER NOT NULL DEFAULT 0
+      );
+      CREATE TABLE IF NOT EXISTS transactions (
+        id TEXT PRIMARY KEY NOT NULL, account_id TEXT, category_id TEXT, amount_centavos INTEGER NOT NULL, direction TEXT NOT NULL,
+        merchant TEXT, note TEXT, occurred_at TEXT NOT NULL, source TEXT NOT NULL, status TEXT NOT NULL, fingerprint TEXT, transfer_group_id TEXT,
+        created_at TEXT NOT NULL, updated_at TEXT NOT NULL, deleted_at TEXT, dirty INTEGER NOT NULL DEFAULT 0
+      );
+      CREATE INDEX IF NOT EXISTS transactions_occurred_idx ON transactions (occurred_at);
+      CREATE INDEX IF NOT EXISTS transactions_fingerprint_idx ON transactions (fingerprint);
     `);
     return database;
   })();
@@ -56,7 +78,7 @@ async function upsert(database: SQLite.SQLiteDatabase, table: TableDef, row: Row
 const tableOf = (name: string) => TABLES.find((t) => t.name === name)!;
 
 /** Saves a row on the phone and marks it for syncing. */
-export async function saveLocal(table: typeof LISTS_TABLE | typeof TASKS_TABLE, row: List | Task): Promise<void> {
+export async function saveLocal(table: SyncedTable, row: List | Task | Account | Category | Transaction): Promise<void> {
   await upsert(await db(), tableOf(table), row as unknown as Row, 1);
 }
 
@@ -68,15 +90,40 @@ export async function readLists(): Promise<List[]> {
   return (await db()).getAllAsync<List>(`SELECT ${LIST_COLUMNS} FROM lists WHERE deleted_at IS NULL ORDER BY sort_order, created_at`);
 }
 
+export async function readAccounts(): Promise<Account[]> {
+  return (await db()).getAllAsync<Account>(`SELECT ${ACCOUNT_COLUMNS} FROM accounts WHERE deleted_at IS NULL ORDER BY sort_order, created_at`);
+}
+
+export async function readCategories(): Promise<Category[]> {
+  return (await db()).getAllAsync<Category>(`SELECT ${CATEGORY_COLUMNS} FROM categories WHERE deleted_at IS NULL ORDER BY sort_order, created_at`);
+}
+
+export async function readTransactions(): Promise<Transaction[]> {
+  return (await db()).getAllAsync<Transaction>(`SELECT ${TRANSACTION_COLUMNS} FROM transactions WHERE deleted_at IS NULL ORDER BY occurred_at DESC LIMIT 5000`);
+}
+
+/** True if a transaction with this fingerprint was ever logged here, including ones you deleted, so a deleted one doesn't come back. */
+export async function hasFingerprint(fingerprint: string): Promise<boolean> {
+  return (await (await db()).getFirstAsync('SELECT 1 FROM transactions WHERE fingerprint = ? LIMIT 1', [fingerprint])) !== null;
+}
+
+export async function getMeta(key: string): Promise<string | null> {
+  return (await (await db()).getFirstAsync<{ value: string }>('SELECT value FROM sync_meta WHERE key = ?', [key]))?.value ?? null;
+}
+
+export async function setMeta(key: string, value: string): Promise<void> {
+  await (await db()).runAsync('INSERT INTO sync_meta (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value', [key, value]);
+}
+
 export async function pendingCount(): Promise<number> {
   const database = await db();
-  const row = await database.getFirstAsync<{ n: number }>('SELECT (SELECT COUNT(*) FROM tasks WHERE dirty = 1) + (SELECT COUNT(*) FROM lists WHERE dirty = 1) AS n');
+  const row = await database.getFirstAsync<{ n: number }>(`SELECT ${TABLES.map((t) => `(SELECT COUNT(*) FROM ${t.name} WHERE dirty = 1)`).join(' + ')} AS n`);
   return row?.n ?? 0;
 }
 
 /** Clears everything stored on this phone. Used when signing out. */
 export async function clearLocal(): Promise<void> {
-  await (await db()).execAsync('DELETE FROM tasks; DELETE FROM lists; DELETE FROM sync_meta;');
+  await (await db()).execAsync(`${TABLES.map((t) => `DELETE FROM ${t.name};`).join(' ')} DELETE FROM sync_meta;`);
 }
 
 let running: Promise<{ pushed: number; pulled: number }> | null = null;

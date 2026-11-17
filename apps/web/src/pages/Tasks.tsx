@@ -5,20 +5,12 @@ import {
   type Grouping, type List, type ListColor, type Priority, type Recurrence, type Reminder, type Task,
 } from '@dirary/shared';
 import { Mascot } from '../Mascot';
+import { Modal, openPicker } from '../ui';
 import { useTasks } from '../tasks/useTasks';
 
 type View = 'today' | 'upcoming' | 'inbox' | 'done' | string; // any other string is a list id
 const FIXED_VIEWS = ['today', 'upcoming', 'inbox', 'done'];
 const toLocal = (iso: string) => localDate(new Date(iso));
-
-/** Opens the browser's date or time picker as soon as the field is clicked, not only from its small icon. */
-function openPicker(event: React.MouseEvent<HTMLInputElement>) {
-  try {
-    event.currentTarget.showPicker?.();
-  } catch {
-    // Some browsers only allow this in certain cases; the field still works by typing.
-  }
-}
 
 export function Tasks() {
   const store = useTasks();
@@ -298,23 +290,6 @@ function QuickAdd({ defaultDate, listId, placeholder, lists, onAdd }: { defaultD
           : 'Tip: type it naturally, like “Submit lab report tomorrow 5pm !high #school” or “Gym every weekday 6am”.'}
       </p>
     </form>
-  );
-}
-
-/** A native <dialog>: focus trap, Escape to close and the backdrop come from the browser. */
-function Modal({ title, onClose, children }: { title: string; onClose: () => void; children: React.ReactNode }) {
-  const ref = useRef<HTMLDialogElement>(null);
-  useEffect(() => {
-    const dialog = ref.current;
-    if (dialog && !dialog.open) dialog.showModal();
-  }, []);
-  return (
-    <dialog ref={ref} className="modal" aria-labelledby="modal-title" onClose={onClose} onClick={(e) => { if (e.target === ref.current) onClose(); }}>
-      <div className="modal-body">
-        <h2 id="modal-title" className="display" style={{ fontSize: 26 }}>{title}</h2>
-        {children}
-      </div>
-    </dialog>
   );
 }
 

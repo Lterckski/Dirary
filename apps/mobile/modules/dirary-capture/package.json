@@ -1,0 +1,7 @@
+{
+  "name": "dirary-capture",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Capture mode: saves transaction notifications from chosen finance apps on the phone, for auto-logging.",
+  "main": "index.ts"
+}
