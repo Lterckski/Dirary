@@ -11,7 +11,7 @@ import {
 } from '@dirary/shared';
 
 import { Confetti } from '@/components/confetti';
-import { Mascot } from '@/components/mascot';
+import { Mascot, MascotPaws } from '@/components/mascot';
 import { Bar, ChangeTag, useChange } from '@/components/motion-bits';
 import { CHECKED_MS, EASE_OUT, ENTER, LEAVE, MOVE } from '@/lib/motion';
 import { AccountsEditor, BudgetEditor, ResetEditor, StashEditor, StashMoveEditor, CategoriesEditor, FixedEditor, Segmented, TransactionEditor, TransferEditor, TxRow } from '@/components/money-editor';
@@ -190,6 +190,11 @@ export default function MoneyScreen() {
 
         <View style={{ paddingHorizontal: space[5], gap: space[5], marginTop: -50 }}>
         <Card style={{ borderRadius: 28 }}>
+          {/* Ink's front paws over the card's top edge, right under his face. The card has a 1px border. */}
+          <View pointerEvents="none" accessibilityElementsHidden importantForAccessibility="no-hide-descendants"
+            style={{ position: 'absolute', zIndex: 2, top: -14, right: space[6] - space[5] - 1 }}>
+            <MascotPaws size={96} />
+          </View>
           <View style={[styles.row, { justifyContent: 'space-between' }]}>
             <Text variant="small" weight="bold" style={LABEL}>SAFE TO SPEND TODAY</Text>
             <Pressable accessibilityRole="button" accessibilityLabel="Set monthly budget" onPress={() => setSheet({ kind: 'budget' })} hitSlop={2}

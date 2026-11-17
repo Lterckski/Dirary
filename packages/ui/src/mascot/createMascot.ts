@@ -171,3 +171,45 @@ export function createMascot<T, E>(h: CreateElement<T, E>, S: SvgPrimitives<T>) 
     return h(S.Svg, { viewBox: '0 0 240 240', width: size, height: size, role: 'img', 'aria-label': LABELS[mood] }, ...parts);
   };
 }
+
+/** Where the card's top edge falls in the paws drawing, as a share of its height. Toes below it hang over the edge. */
+export const PAWS_LEDGE = 36 / 60;
+
+/**
+ * Ink's two front paws resting on a ledge, for when he stands up to look over a card. Drawn on the same
+ * horizontal scale as the mascot (240 units wide), so at the same size the paws sit right under his face.
+ * Render it in front of the card, with the card's top edge at PAWS_LEDGE of its height.
+ */
+export function createMascotPaws<T, E>(h: CreateElement<T, E>, S: SvgPrimitives<T>) {
+  let k = 0;
+  const el = (type: T, props: Props, ...children: E[]) => h(type, { key: `p${k++}`, ...props }, ...children);
+  // Wide apart, so his tongue and beard stay visible between them; a lighter rim keeps them apart from his dark chest.
+  const paw = (cx: number, lean: number): E[] => {
+    const l = cx - 20;
+    const r = cx + 20;
+    return [
+      el(S.Path, {
+        d: `M${l} 31 C${l - 1 + lean} 18 ${cx - 15 + lean} 3 ${cx - 8 + lean} 6 C${cx - 5 + lean} 0 ${cx + 1 + lean} 5 ${cx + 4 + lean} 2 C${cx + 10 + lean} 0 ${cx + 13 + lean} 7 ${cx + 15 + lean} 5 C${r + 3 + lean} 11 ${r + 1} 20 ${r} 31 L${r} 38 C${r} 46 ${cx + 14} 49 ${cx + 7} 47 C${cx + 3} 50 ${cx - 3} 50 ${cx - 7} 47 C${cx - 14} 49 ${l} 46 ${l} 38 Z`,
+        fill: 'url(#ink-paw)', stroke: '#4A5164', strokeWidth: 1.4, strokeLinejoin: 'round',
+      }),
+      el(S.Path, { d: `M${cx - 7} 40 L${cx - 7} 47 M${cx + 7} 40 L${cx + 7} 47`, fill: 'none', stroke: '#08090B', strokeWidth: 1.8, strokeLinecap: 'round' }),
+      el(S.Path, {
+        d: `M${cx - 12 + lean} 11 Q${cx - 14} 20 ${cx - 13} 29 M${cx - 3 + lean} 8 Q${cx - 4} 18 ${cx - 3} 27 M${cx + 7 + lean} 8 Q${cx + 8} 17 ${cx + 8} 26`,
+        fill: 'none', stroke: '#596178', strokeWidth: 1.4, strokeLinecap: 'round', opacity: 0.8,
+      }),
+      el(S.Path, { d: `M${l + 3} 35 Q${cx} 31.5 ${r - 3} 35`, fill: 'none', stroke: '#7C87A3', strokeWidth: 1.2, strokeLinecap: 'round', opacity: 0.45 }),
+    ];
+  };
+  return function MascotPaws({ size = 240 }: { size?: number }): E {
+    k = 0;
+    return h(S.Svg, { viewBox: '0 0 240 60', width: size, height: size / 4, 'aria-hidden': true },
+      el(S.Defs, {}, el(S.LinearGradient, { id: 'ink-paw', x1: '0', y1: '0', x2: '0', y2: '1' },
+        el(S.Stop, { offset: '0', stopColor: '#353A46' }), el(S.Stop, { offset: '1', stopColor: '#181A20' }))),
+      // the paws' shadow on the card
+      el(S.Ellipse, { cx: 82, cy: 50, rx: 21, ry: 3.5, fill: '#000000', opacity: 0.4 }),
+      el(S.Ellipse, { cx: 158, cy: 50, rx: 21, ry: 3.5, fill: '#000000', opacity: 0.4 }),
+      ...paw(82, -2),
+      ...paw(158, 2),
+    );
+  };
+}

@@ -416,3 +416,9 @@ input[type='date'].input, input[type='time'].input { cursor: pointer; }
   .bar div { transition: width 240ms var(--ease-out), background-color 200ms ease-out; }
 }
 @media (prefers-reduced-motion: reduce) { .delta { display: none; } }
+
+/* ---- Ink looking over the first card: body behind it, front paws over its edge ---- */
+.peek { position: relative; margin-top: -50px; }
+.peek .card.safe { margin-top: 0; }
+.peek-ink { position: absolute; z-index: 0; right: 28px; top: -70px; pointer-events: none; line-height: 0; }
+.peek-paws { position: absolute; z-index: 2; right: 27px; top: -15px; pointer-events: none; line-height: 0; }

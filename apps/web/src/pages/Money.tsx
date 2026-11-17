@@ -5,7 +5,7 @@ import {
   type Account, type Category, type CsvMapping, type FixedExpense, type Stash, type Institution, type ListColor, type Transaction,
 } from '@dirary/shared';
 import { confettiFrom } from '../confetti';
-import { Mascot } from '../Mascot';
+import { Mascot, MascotPaws } from '../Mascot';
 import { useMoney, type MoneyStore } from '../money/useMoney';
 import { Modal, openPicker } from '../ui';
 
@@ -130,7 +130,6 @@ export function Money() {
           <p className="hero-date">{now.toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' })}</p>
           <h1 className="display">Hello, {GREETING_NAME}!</h1>
         </div>
-        <span className="hero-ink" aria-hidden="true"><Mascot mood={coach.mood} size={96} /></span>
       </header>
 
       {error && <p className="note error" role="alert">{error}</p>}
@@ -148,7 +147,11 @@ export function Money() {
         // Two columns on wide screens: today's money on the left, the month on the right. One column on phones, in the same order.
         <div className="money-cols">
           <div className="money-col">
+          {/* Ink stands behind the first card with his front paws over its edge. */}
+          <div className="peek">
+          <span className="peek-ink" aria-hidden="true"><Mascot mood={coach.mood} size={96} /></span>
           <section className="card safe" aria-labelledby="safe-title">
+            <span className="peek-paws" aria-hidden="true"><MascotPaws size={96} /></span>
             <div className="row" style={{ justifyContent: 'space-between' }}>
               <h2 id="safe-title" className="card-label">Safe to spend today</h2>
               <button type="button" className="round-btn" aria-label="Set monthly budget" onClick={() => setDialog({ kind: 'budget' })}>
@@ -176,6 +179,7 @@ export function Money() {
               <p aria-live="polite">{coach.line}</p>
             </div>
           </section>
+          </div>
 
           <section className="wallet" aria-labelledby="wallet-title">
             <ul className={shown ? 'wallet-cards filtering' : 'wallet-cards'} aria-label="Accounts. Tap one to see only its transactions">
