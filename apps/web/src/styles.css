@@ -325,3 +325,15 @@ input[type='date'].input, input[type='time'].input { cursor: pointer; }
 .day-head { display: flex; justify-content: space-between; gap: 8px; padding-right: 4px; }
 .day-balance { font-weight: 600; letter-spacing: 0; text-transform: none; color: var(--muted); font-variant-numeric: tabular-nums; }
 @media (prefers-reduced-motion: no-preference) { .wallet-card { transition: transform 160ms ease-out, opacity 160ms ease-out; } }
+
+/* ---- Stashes ---- */
+.wallet-card-stash { font-size: 11px; font-weight: 600; opacity: 0.8; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.wallet-sub { position: relative; margin: 0; color: var(--muted); font-size: 14px; font-variant-numeric: tabular-nums; }
+.stash-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; }
+.stash { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; gap: 8px 12px; padding: 12px 0; border-top: 1px solid var(--line); }
+.stash:first-child { border-top: none; padding-top: 4px; }
+.stash-main { display: flex; flex-direction: column; gap: 2px; min-width: 0; padding: 0; border: none; background: none; text-align: left; font: inherit; color: inherit; cursor: pointer; }
+.stash-main:hover .task-title { text-decoration: underline; }
+.stash-bar { grid-column: 1 / -1; }
+.stash-actions { grid-column: 1 / -1; display: flex; gap: 8px; }
+.note.warn { color: var(--amber); }

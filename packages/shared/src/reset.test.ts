@@ -31,6 +31,7 @@ describe('money reset', () => {
     expect(calls).toEqual([
       ['transactions', { deleted_at: 'T', updated_at: 'T' }, 'deleted_at'],
       ['accounts', { opening_balance_centavos: 0, updated_at: 'T' }, 'deleted_at'],
+      ['stashes', { amount_centavos: 0, updated_at: 'T' }, 'deleted_at'],
     ]);
     calls.length = 0;
     expect(await resetMoneyRemote(client('transactions'), 'T')).toBe('nope');

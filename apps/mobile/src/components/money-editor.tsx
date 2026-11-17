@@ -3,13 +3,13 @@ import { Pressable, TextInput, View } from 'react-native';
 import { colors, space } from '@dirary/ui';
 import {
   INSTITUTIONS, INSTITUTION_LABEL, LIST_COLORS, TransactionDraft, formatPeso, parseAmount,
-  type Account, type Category, type FixedExpense, type Institution, type ListColor, type MoneyPlan, type Transaction,
+  type Account, type Category, type FixedExpense, type Institution, type ListColor, type MoneyPlan, type Stash, type Transaction,
 } from '@dirary/shared';
 
 import { Chip } from '@/components/task-bits';
 import { Field, Sheet, Wrap } from '@/components/task-editor';
 import { Button, Text, styles } from '@/components/ui';
-import { addTransaction, addTransfer, removeAccount, removeCategory, removeFixed, removeTransaction, resetMoney, saveAccount, saveCategory, saveFixed, setMonthlyBudget, updateTransaction } from '@/lib/money-store';
+import { addTransaction, addTransfer, removeAccount, removeCategory, removeFixed, removeStash, removeTransaction, resetMoney, saveAccount, saveCategory, saveFixed, saveStash, setMonthlyBudget, updateTransaction } from '@/lib/money-store';
 
 const Problem = ({ text }: { text: string | null }) => (text ? <Text variant="label" style={{ color: colors.red }} accessibilityRole="alert">{text}</Text> : null);
 const Danger = ({ label, onPress }: { label: string; onPress: () => void }) => (
@@ -191,7 +191,7 @@ export function ResetEditor({ count, onClose }: { count: number; onClose: () => 
   return (
     <Sheet title="Reset money to ₱0" onClose={onClose}>
       <Text>This deletes {count === 1 ? 'your 1 transaction' : `all ${count.toLocaleString('en-US')} transactions`}, including ones waiting to be reviewed, and sets every account's balance to ₱0. It can't be undone.</Text>
-      <Text variant="label" muted>Your accounts, categories, fixed expenses and monthly budget stay.</Text>
+      <Text variant="label" muted>Your accounts, categories, fixed expenses, monthly budget and stashes stay. Stashes are emptied to ₱0.</Text>
       <Field label="Your password">
         <TextInput accessibilityLabel="Your password" style={styles.input} value={password} onChangeText={setPassword} secureTextEntry autoComplete="current-password" textContentType="password" autoCapitalize="none" autoFocus onSubmitEditing={reset} />
       </Field>
@@ -352,6 +352,78 @@ export function FixedEditor({ fixed, accounts, categories, onClose }: { fixed: F
         <Button primary label={editing ? 'Save' : 'Add'} onPress={save} />
         {editing && <Button label="Cancel" onPress={() => start(null)} />}
       </View>
+    </Sheet>
+  );
+}
+
+export function StashEditor({ stash, accounts, count, startAccount, onClose }: { stash: Stash | null; accounts: Account[]; count: number; startAccount?: string; onClose: () => void }) {
+  const [name, setName] = useState(stash?.name ?? '');
+  const [accountId, setAccountId] = useState(stash?.account_id ?? startAccount ?? accounts[0]?.id ?? '');
+  const [goal, setGoal] = useState(stash?.goal_centavos ? String(stash.goal_centavos / 100) : '');
+  const [amount, setAmount] = useState('');
+  const [problem, setProblem] = useState<string | null>(null);
+  async function save() {
+    if (!name.trim()) return setProblem('Give it a name, like Emergency fund.');
+    if (!accountId) return setProblem('Pick the account the money is in.');
+    const goalCentavos = goal.trim() === '' ? null : parseAmount(goal);
+    if (goal.trim() !== '' && !goalCentavos) return setProblem('Enter the goal as an amount, like 20000, or leave it empty.');
+    const start = amount.trim() === '' ? 0 : parseAmount(amount);
+    if (start === null) return setProblem('Enter an amount, like 5000, or leave it empty.');
+    const fields = { name: name.trim().slice(0, 40), account_id: accountId, goal_centavos: goalCentavos };
+    onClose();
+    await saveStash(stash ? { ...stash, ...fields } : { ...fields, amount_centavos: start, sort_order: count });
+  }
+  return (
+    <Sheet title={stash ? `Edit ${stash.name}` : 'New stash'} onClose={onClose}>
+      {!stash && <Text variant="label" muted>The money stays where it is. A stash only marks part of an account's balance as set aside, so it stops counting as spendable.</Text>}
+      <Field label="Name">
+        <TextInput accessibilityLabel="Name" style={styles.input} value={name} maxLength={40} onChangeText={setName} placeholder="Emergency fund" placeholderTextColor={colors.faint} autoFocus={!stash} />
+      </Field>
+      <Field label="Kept in"><Wrap>{accounts.map((a) => <Chip key={a.id} label={a.name} active={accountId === a.id} onPress={() => setAccountId(a.id)} />)}</Wrap></Field>
+      <Field label="Goal (₱, optional)">
+        <TextInput accessibilityLabel="Goal in pesos" style={money} keyboardType="decimal-pad" value={goal} onChangeText={setGoal} placeholder="20000" placeholderTextColor={colors.faint} />
+      </Field>
+      {!stash && (
+        <Field label="Set aside now (₱)">
+          <TextInput accessibilityLabel="Amount to set aside now in pesos" style={money} keyboardType="decimal-pad" value={amount} onChangeText={setAmount} placeholder="0" placeholderTextColor={colors.faint} />
+        </Field>
+      )}
+      <Problem text={problem} />
+      <Button primary label={stash ? 'Save' : 'Add stash'} onPress={save} />
+      {stash && (
+        <>
+          <Danger label="Delete stash" onPress={() => { onClose(); removeStash(stash); }} />
+          <Text variant="label" muted>Deleting a stash doesn't move or remove money. What was set aside counts as spendable again.</Text>
+        </>
+      )}
+    </Sheet>
+  );
+}
+
+export function StashMoveEditor({ stash, mode, free, accountName, onClose }: { stash: Stash; mode: 'in' | 'out'; free: number; accountName: string; onClose: () => void }) {
+  const [amount, setAmount] = useState('');
+  const [problem, setProblem] = useState<string | null>(null);
+  const centavos = parseAmount(amount);
+  const putting = mode === 'in';
+  async function save() {
+    if (!centavos) return setProblem('Enter an amount, like 500.');
+    if (!putting && centavos > stash.amount_centavos) return setProblem(`Only ${formatPeso(stash.amount_centavos)} is in ${stash.name}.`);
+    onClose();
+    await saveStash({ ...stash, amount_centavos: Math.max(0, stash.amount_centavos + (putting ? centavos : -centavos)) });
+  }
+  return (
+    <Sheet title={putting ? `Put money in ${stash.name}` : `Take money out of ${stash.name}`} onClose={onClose}>
+      <Text variant="label" muted>
+        {putting
+          ? `${accountName} has ${formatPeso(Math.max(0, free))} that isn't set aside yet. Nothing moves between accounts; this only marks the money as saved.`
+          : `${stash.name} has ${formatPeso(stash.amount_centavos)}. What you take out counts as spendable again.`}
+      </Text>
+      <Field label="Amount (₱)">
+        <TextInput accessibilityLabel="Amount in pesos" style={money} keyboardType="decimal-pad" value={amount} onChangeText={setAmount} placeholder="500" placeholderTextColor={colors.faint} autoFocus />
+      </Field>
+      {putting && centavos !== null && centavos > free && <Text variant="label" style={{ color: colors.amber }}>That's more than {accountName} has free. Check its balance first, or it will show as over.</Text>}
+      <Problem text={problem} />
+      <Button primary label={putting ? 'Put in' : 'Take out'} onPress={save} />
     </Sheet>
   );
 }

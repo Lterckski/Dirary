@@ -1,6 +1,7 @@
 /** Starting money over from ₱0, after the person re-enters their password. */
 import type { SupabaseClient } from '@supabase/supabase-js';
 import { ACCOUNTS_TABLE, TRANSACTIONS_TABLE } from './money';
+import { STASHES_TABLE } from './stash';
 
 export type PasswordCheck = 'ok' | 'wrong' | 'offline' | 'signed-out';
 
@@ -25,12 +26,15 @@ export function passwordProblem(result: Exclude<PasswordCheck, 'ok'>): string {
 }
 
 /**
- * Deletes every transaction and sets every account's opening balance to ₱0. Accounts, categories,
- * fixed expenses and the budget stay. Rows are marked deleted, not erased, so other devices pick it up.
+ * Deletes every transaction, sets every account's opening balance to ₱0 and empties every stash. Accounts,
+ * categories, fixed expenses, the budget and the stashes themselves (with their goals) stay. Rows are marked deleted, not erased, so other devices pick it up.
  */
 export async function resetMoneyRemote(client: SupabaseClient, stamp: string): Promise<string | null> {
   const t = await client.from(TRANSACTIONS_TABLE).update({ deleted_at: stamp, updated_at: stamp }).is('deleted_at', null);
   if (t.error) return t.error.message;
   const a = await client.from(ACCOUNTS_TABLE).update({ opening_balance_centavos: 0, updated_at: stamp }).is('deleted_at', null);
-  return a.error ? a.error.message : null;
+  if (a.error) return a.error.message;
+  const s = await client.from(STASHES_TABLE).update({ amount_centavos: 0, updated_at: stamp }).is('deleted_at', null);
+  // Stashes are optional: without their SQL file there is nothing to empty.
+  return s.error && !/relation .* does not exist|schema cache/i.test(s.error.message) ? s.error.message : null;
 }

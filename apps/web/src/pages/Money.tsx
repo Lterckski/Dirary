@@ -1,8 +1,8 @@
 import { useEffect, useMemo, useState, type FormEvent, type ReactNode } from 'react';
 import {
-  INSTITUTIONS, INSTITUTION_LABEL, LIST_COLORS, TransactionDraft, accountBalance, budgetCoach, dayLabel, endOfDayBalances, findTransferPairs, formatPeso, guessMapping,
+  INSTITUTIONS, INSTITUTION_LABEL, LIST_COLORS, TransactionDraft, accountBalance, budgetCoach, dayLabel, endOfDayBalances, moveStash, stashProgress, stashSummary, findTransferPairs, formatPeso, guessMapping,
   dueLabel, fixedThisMonth, formatPesoShort, monthName, monthlyRecap, recapLine, localDate, monthSummary, needsReview, parseAmount, parseCsv, parseMoneyQuickAdd, recentTransactions, rowsToTransactions, safeToSpend, spendCoach,
-  type Account, type Category, type CsvMapping, type FixedExpense, type Institution, type ListColor, type Transaction,
+  type Account, type Category, type CsvMapping, type FixedExpense, type Stash, type Institution, type ListColor, type Transaction,
 } from '@dirary/shared';
 import { Mascot } from '../Mascot';
 import { useMoney, type MoneyStore } from '../money/useMoney';
@@ -17,7 +17,7 @@ const forInput = (d: Date) => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad
 const timeOf = (iso: string) => new Date(iso).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' });
 
 type Direction = 'in' | 'out';
-type Dialog = { kind: 'tx'; tx: Transaction | null; categoryId?: string; direction?: Direction; accountId?: string } | { kind: 'fixed' } | { kind: 'budget' } | { kind: 'reset' } | { kind: 'accounts' } | { kind: 'categories' } | { kind: 'transfer' } | { kind: 'import' } | null;
+type Dialog = { kind: 'tx'; tx: Transaction | null; categoryId?: string; direction?: Direction; accountId?: string } | { kind: 'fixed' } | { kind: 'budget' } | { kind: 'reset' } | { kind: 'stash'; stash: Stash | null } | { kind: 'stashMove'; stash: Stash; mode: 'in' | 'out' } | { kind: 'accounts' } | { kind: 'categories' } | { kind: 'transfer' } | { kind: 'import' } | null;
 
 export function Money() {
   const store = useMoney();
@@ -34,7 +34,7 @@ export function Money() {
   // Ink speaks about today's allowance first; a category over budget takes over when there is one.
   const budgetLine = budgetCoach(summary, now.getDate(), daysInMonth);
   const coach = budgetLine.mood === 'worried' && safe.safeToday >= 0 ? budgetLine : spendCoach(safe, fixedSummary, formatPeso);
-  const total = accounts.reduce((sum, a) => sum + accountBalance(a, transactions), 0);
+  const stash = useMemo(() => stashSummary(store.stashes, accounts, transactions), [store.stashes, accounts, transactions]);
   const safePct = safe.dailyLimit === 0 ? (safe.spentToday > 0 ? 100 : 0) : Math.min(100, Math.round((safe.spentToday / safe.dailyLimit) * 100));
   const shortcuts = categories.filter((c) => c.kind === 'expense').slice(0, 4);
   const recap = useMemo(() => monthlyRecap(transactions, today, toLocal), [transactions, today]);
@@ -133,14 +133,16 @@ export function Money() {
                     aria-label={`${a.name}, ${formatPeso(accountBalance(a, transactions))}. Show only ${a.name} transactions`}>
                     <span className="wallet-card-name">{a.name}</span>
                     <span className="wallet-card-balance">{formatPeso(accountBalance(a, transactions))}</span>
+                    {(stash.byAccount.get(a.id)?.stashed ?? 0) > 0 && <span className="wallet-card-stash">{formatPeso(stash.byAccount.get(a.id)!.stashed)} stashed</span>}
                   </button>
                 </li>
               ))}
             </ul>
             <div className="wallet-front">
               <span className="wallet-ink" aria-hidden="true"><Mascot mood="happy" size={132} /></span>
-              <h2 id="wallet-title" className="card-label">Balance</h2>
-              <p className="display wallet-total">{formatPeso(total)}</p>
+              <h2 id="wallet-title" className="card-label">{stash.stashed > 0 ? 'Spendable' : 'Balance'}</h2>
+              <p className="display wallet-total">{formatPeso(stash.stashed > 0 ? stash.spendable : stash.total)}</p>
+              {stash.stashed > 0 && <p className="wallet-sub">{formatPeso(stash.stashed)} in stashes · {formatPeso(stash.total)} in total</p>}
               {shown && (
                 <p className="wallet-filter" role="status">
                   Showing <strong>{shown.name}</strong> only.
@@ -155,6 +157,50 @@ export function Money() {
                 <button type="button" className="chip" onClick={() => setDialog({ kind: 'import' })} disabled={accounts.length === 0}>Import statement</button>
               </div>
             </div>
+          </section>
+
+          <section className="card stashes" aria-labelledby="stashes-title">
+            <div className="row" style={{ justifyContent: 'space-between' }}>
+              <h2 id="stashes-title" className="card-label">Stashes</h2>
+              <span className="row" style={{ gap: 8 }}>
+                {stash.stashed > 0 && <span className="muted note amount-note">{formatPeso(stash.stashed)} set aside</span>}
+                {store.stashesReady && <button type="button" className="chip ghost" onClick={() => setDialog({ kind: 'stash', stash: null })} disabled={accounts.length === 0}>Add</button>}
+              </span>
+            </div>
+            {!store.stashesReady ? (
+              <p className="note muted">Run the stashes SQL file in Supabase (20261120000000_phase2_stashes.sql), then reload.</p>
+            ) : stash.stashes.length === 0 ? (
+              <p className="muted">Set money aside for an emergency fund, tuition or anything else. It stays in its account but stops counting as spendable.</p>
+            ) : (
+              <ul className="stash-list">
+                {stash.stashes.map((s) => {
+                  const pct = stashProgress(s);
+                  return (
+                    <li key={s.id} className="stash">
+                      <button type="button" className="stash-main" onClick={() => setDialog({ kind: 'stash', stash: s })} aria-label={`Edit ${s.name}`}>
+                        <span className="task-title">{s.name}</span>
+                        <span className="task-meta">{accountById.get(s.account_id)?.name}{s.goal_centavos ? ` · goal ${formatPeso(s.goal_centavos)}` : ''}</span>
+                      </button>
+                      <span className="amount">{formatPeso(s.amount_centavos)}</span>
+                      {pct !== null && (
+                        <div className="bar thin stash-bar" role="progressbar" aria-valuemin={0} aria-valuemax={100} aria-valuenow={pct} aria-label={`${s.name}: ${pct}% of goal`}>
+                          <div style={{ width: `${pct}%` }} />
+                        </div>
+                      )}
+                      <div className="stash-actions">
+                        <button type="button" className="chip" onClick={() => setDialog({ kind: 'stashMove', stash: s, mode: 'in' })}>Put in</button>
+                        <button type="button" className="chip" onClick={() => setDialog({ kind: 'stashMove', stash: s, mode: 'out' })} disabled={s.amount_centavos === 0}>Take out</button>
+                      </div>
+                    </li>
+                  );
+                })}
+              </ul>
+            )}
+            {stash.overdrawn.length > 0 && (
+              <p className="note warn" role="alert">
+                More is set aside in {stash.overdrawn.map((a) => a.name).join(' and ')} than {stash.overdrawn.length === 1 ? 'it holds' : 'they hold'}. Take some out of a stash, or check that balance.
+              </p>
+            )}
           </section>
 
           {shortcuts.length > 0 && (
@@ -301,6 +347,8 @@ export function Money() {
       {dialog?.kind === 'budget' && <BudgetDialog store={store} fixedTotal={fixedSummary.total} onClose={() => setDialog(null)} />}
       {dialog?.kind === 'accounts' && <AccountsDialog store={store} onReset={() => setDialog({ kind: 'reset' })} onClose={() => setDialog(null)} />}
       {dialog?.kind === 'reset' && <ResetDialog store={store} onClose={() => setDialog(null)} />}
+      {dialog?.kind === 'stash' && <StashDialog stash={dialog.stash} store={store} startAccount={shown?.id} onClose={() => setDialog(null)} />}
+      {dialog?.kind === 'stashMove' && <StashMoveDialog stash={dialog.stash} mode={dialog.mode} free={stash.byAccount.get(dialog.stash.account_id)?.free ?? 0} accountName={accountById.get(dialog.stash.account_id)?.name ?? 'the account'} store={store} onClose={() => setDialog(null)} />}
       {dialog?.kind === 'categories' && <CategoriesDialog store={store} onClose={() => setDialog(null)} />}
       {dialog?.kind === 'transfer' && <TransferDialog store={store} onClose={() => setDialog(null)} />}
       {dialog?.kind === 'import' && <ImportDialog store={store} onClose={() => setDialog(null)} />}
@@ -516,7 +564,7 @@ function ResetDialog({ store, onClose }: { store: MoneyStore; onClose: () => voi
     <Modal title="Reset money to ₱0" onClose={onClose}>
       <form className="form" onSubmit={submit}>
         <p>This deletes {count === 1 ? 'your 1 transaction' : `all ${count.toLocaleString('en-US')} transactions`}, including ones waiting to be reviewed, and sets every account's balance to ₱0. It can't be undone.</p>
-        <p className="note muted">Your accounts, categories, fixed expenses and monthly budget stay.</p>
+        <p className="note muted">Your accounts, categories, fixed expenses, monthly budget and stashes stay. Stashes are emptied to ₱0.</p>
         <label className="field">Your password
           <input className="input" type="password" autoComplete="current-password" value={password} onChange={(e) => setPassword(e.target.value)} data-autofocus />
         </label>
@@ -824,5 +872,94 @@ function Recap({ months }: { months: ReturnType<typeof monthlyRecap> }) {
       )}
       <p className={now ? undefined : 'muted'}>{recapLine(months, formatPeso)}</p>
     </section>
+  );
+}
+
+function StashDialog({ stash, store, startAccount, onClose }: { stash: Stash | null; store: MoneyStore; startAccount?: string; onClose: () => void }) {
+  const [name, setName] = useState(stash?.name ?? '');
+  const [accountId, setAccountId] = useState(stash?.account_id ?? startAccount ?? store.accounts[0]?.id ?? '');
+  const [goal, setGoal] = useState(stash?.goal_centavos ? String(stash.goal_centavos / 100) : '');
+  const [amount, setAmount] = useState('');
+  const [problem, setProblem] = useState<string | null>(null);
+  function submit(event: FormEvent) {
+    event.preventDefault();
+    if (!name.trim()) return setProblem('Give it a name, like Emergency fund.');
+    if (!accountId) return setProblem('Pick the account the money is in.');
+    const goalCentavos = goal.trim() === '' ? null : parseAmount(goal);
+    if (goal.trim() !== '' && !goalCentavos) return setProblem('Enter the goal as an amount, like 20000, or leave it empty.');
+    const start = amount.trim() === '' ? 0 : parseAmount(amount);
+    if (start === null) return setProblem('Enter an amount, like 5000, or leave it empty.');
+    store.saveStash({ id: stash?.id, name: name.trim().slice(0, 40), account_id: accountId, goal_centavos: goalCentavos, amount_centavos: stash ? stash.amount_centavos : start });
+    onClose();
+  }
+  return (
+    <Modal title={stash ? `Edit ${stash.name}` : 'New stash'} onClose={onClose}>
+      <form className="form" onSubmit={submit}>
+        {!stash && <p className="note muted">The money stays where it is. A stash only marks part of an account's balance as set aside, so it stops counting as spendable.</p>}
+        <div className="two">
+          <label className="field">Name
+            <input className="input" value={name} maxLength={40} placeholder="Emergency fund" onChange={(e) => setName(e.target.value)} data-autofocus />
+          </label>
+          <label className="field">Kept in
+            <select className="input" value={accountId} onChange={(e) => setAccountId(e.target.value)}>
+              {store.accounts.map((a) => <option key={a.id} value={a.id}>{a.name}</option>)}
+            </select>
+          </label>
+        </div>
+        <div className="two">
+          <label className="field">Goal (₱, optional)
+            <input className="input" inputMode="decimal" value={goal} placeholder="20000" onChange={(e) => setGoal(e.target.value)} />
+          </label>
+          {!stash && (
+            <label className="field">Set aside now (₱)
+              <input className="input" inputMode="decimal" value={amount} placeholder="0" onChange={(e) => setAmount(e.target.value)} />
+            </label>
+          )}
+        </div>
+        {problem && <p className="note error" role="alert">{problem}</p>}
+        <div className="actions">
+          {stash && <button type="button" className="btn danger" onClick={() => { store.removeStash(stash.id); onClose(); }}>Delete stash</button>}
+          <span className="grow" />
+          <button type="button" className="btn" onClick={onClose}>Cancel</button>
+          <button type="submit" className="btn primary">{stash ? 'Save' : 'Add stash'}</button>
+        </div>
+        {stash && <p className="note muted">Deleting a stash doesn't move or remove money. What was set aside counts as spendable again.</p>}
+      </form>
+    </Modal>
+  );
+}
+
+function StashMoveDialog({ stash, mode, free, accountName, store, onClose }: { stash: Stash; mode: 'in' | 'out'; free: number; accountName: string; store: MoneyStore; onClose: () => void }) {
+  const [amount, setAmount] = useState('');
+  const [problem, setProblem] = useState<string | null>(null);
+  const centavos = parseAmount(amount);
+  const putting = mode === 'in';
+  function submit(event: FormEvent) {
+    event.preventDefault();
+    if (!centavos) return setProblem('Enter an amount, like 500.');
+    if (!putting && centavos > stash.amount_centavos) return setProblem(`Only ${formatPeso(stash.amount_centavos)} is in ${stash.name}.`);
+    store.saveStash({ ...stash, amount_centavos: moveStash(stash, putting ? centavos : -centavos) });
+    onClose();
+  }
+  return (
+    <Modal title={putting ? `Put money in ${stash.name}` : `Take money out of ${stash.name}`} onClose={onClose}>
+      <form className="form" onSubmit={submit}>
+        <p className="note muted">
+          {putting
+            ? `${accountName} has ${formatPeso(Math.max(0, free))} that isn't set aside yet. Nothing moves between accounts; this only marks the money as saved.`
+            : `${stash.name} has ${formatPeso(stash.amount_centavos)}. What you take out counts as spendable again.`}
+        </p>
+        <label className="field">Amount (₱)
+          <input className="input" inputMode="decimal" value={amount} placeholder="500" onChange={(e) => setAmount(e.target.value)} data-autofocus />
+        </label>
+        {putting && centavos !== null && centavos > free && <p className="note warn">That's more than {accountName} has free. Check its balance first, or it will show as over.</p>}
+        {problem && <p className="note error" role="alert">{problem}</p>}
+        <div className="actions">
+          <span className="grow" />
+          <button type="button" className="btn" onClick={onClose}>Cancel</button>
+          <button type="submit" className="btn primary">{putting ? 'Put in' : 'Take out'}</button>
+        </div>
+      </form>
+    </Modal>
   );
 }

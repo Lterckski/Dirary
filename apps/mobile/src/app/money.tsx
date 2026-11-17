@@ -4,12 +4,12 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Path, Svg } from 'react-native-svg';
 import { colors, radius, space } from '@dirary/ui';
 import {
-  accountBalance, budgetCoach, dayLabel, endOfDayBalances, dueLabel, findTransferPairs, fixedThisMonth, formatPeso, formatPesoShort, monthName, monthlyRecap, recapLine, localDate, monthSummary, needsReview, parseMoneyQuickAdd, recentTransactions, safeToSpend, spendCoach,
-  type Institution, type MonthRecap, type Transaction,
+  accountBalance, budgetCoach, dayLabel, endOfDayBalances, stashProgress, stashSummary, dueLabel, findTransferPairs, fixedThisMonth, formatPeso, formatPesoShort, monthName, monthlyRecap, recapLine, localDate, monthSummary, needsReview, parseMoneyQuickAdd, recentTransactions, safeToSpend, spendCoach,
+  type Institution, type MonthRecap, type Stash, type Transaction,
 } from '@dirary/shared';
 
 import { Mascot } from '@/components/mascot';
-import { AccountsEditor, BudgetEditor, ResetEditor, CategoriesEditor, FixedEditor, Segmented, TransactionEditor, TransferEditor, TxRow } from '@/components/money-editor';
+import { AccountsEditor, BudgetEditor, ResetEditor, StashEditor, StashMoveEditor, CategoriesEditor, FixedEditor, Segmented, TransactionEditor, TransferEditor, TxRow } from '@/components/money-editor';
 import { Chip, Group } from '@/components/task-bits';
 import { Button, Card, TAB_BAR_CLEARANCE, Text, styles } from '@/components/ui';
 import { useAddRequest } from '@/lib/add-bus';
@@ -25,10 +25,10 @@ const CARD_COLOR: Record<Institution, string> = { securitybank: colors.amber, go
 const LABEL = { letterSpacing: 1.4, color: colors.muted } as const;
 const NUM = { fontVariant: ['tabular-nums' as const] };
 
-type Sheet = { kind: 'tx'; tx: Transaction | null; categoryId?: string; direction?: 'in' | 'out'; accountId?: string } | { kind: 'fixed' } | { kind: 'budget' } | { kind: 'reset' } | { kind: 'accounts' } | { kind: 'categories' } | { kind: 'transfer' } | null;
+type Sheet = { kind: 'tx'; tx: Transaction | null; categoryId?: string; direction?: 'in' | 'out'; accountId?: string } | { kind: 'fixed' } | { kind: 'budget' } | { kind: 'reset' } | { kind: 'stash'; stash: Stash | null } | { kind: 'stashMove'; stash: Stash; mode: 'in' | 'out' } | { kind: 'accounts' } | { kind: 'categories' } | { kind: 'transfer' } | null;
 
 export default function MoneyScreen() {
-  const { accounts, categories, transactions, fixed, plan, loading } = useMoneyStore();
+  const { accounts, categories, transactions, fixed, plan, stashes, loading } = useMoneyStore();
   const insets = useSafeAreaInsets();
   const [sheet, setSheet] = useState<Sheet>(null);
   const [text, setText] = useState('');
@@ -43,7 +43,7 @@ export default function MoneyScreen() {
   // Ink speaks about today's allowance first; a category over budget takes over when there is one.
   const budgetLine = budgetCoach(summary, now.getDate(), daysInMonth);
   const coach = budgetLine.mood === 'worried' && safe.safeToday >= 0 ? budgetLine : spendCoach(safe, fixedSummary, formatPeso);
-  const total = accounts.reduce((sum, a) => sum + accountBalance(a, transactions), 0);
+  const stash = useMemo(() => stashSummary(stashes, accounts, transactions), [stashes, accounts, transactions]);
   const safePct = safe.dailyLimit === 0 ? (safe.spentToday > 0 ? 100 : 0) : Math.min(100, Math.round((safe.spentToday / safe.dailyLimit) * 100));
   const shortcuts = categories.filter((c) => c.kind === 'expense').slice(0, 4);
   const over = safe.ready && safe.safeToday < 0;
@@ -159,6 +159,7 @@ export default function MoneyScreen() {
                 style={({ pressed }) => ({ opacity: pressed ? 0.85 : shown && shown.id !== a.id ? 0.45 : 1, flexGrow: 1, minWidth: 112, marginTop: (i % 2 ? 8 : 0) + (only === a.id ? -6 : 0), borderWidth: only === a.id ? 2 : 0, borderBottomWidth: 0, borderColor: colors.text, paddingTop: space[3], paddingHorizontal: 14, paddingBottom: 40, borderTopLeftRadius: 16, borderTopRightRadius: 16, backgroundColor: CARD_COLOR[a.institution], gap: 2 })}>
                 <Text variant="small" weight="bold" numberOfLines={1} style={{ color: colors.onInkBlue }}>{a.name}</Text>
                 <Text variant="label" weight="bold" numberOfLines={1} style={[NUM, { color: colors.onInkBlue }]}>{formatPeso(accountBalance(a, transactions))}</Text>
+                {(stash.byAccount.get(a.id)?.stashed ?? 0) > 0 && <Text variant="small" numberOfLines={1} style={[NUM, { color: colors.onInkBlue, opacity: 0.8 }]}>{formatPeso(stash.byAccount.get(a.id)!.stashed)} stashed</Text>}
               </Pressable>
             ))}
           </ScrollView>
@@ -167,8 +168,9 @@ export default function MoneyScreen() {
             <View pointerEvents="none" accessibilityElementsHidden importantForAccessibility="no-hide-descendants" style={{ position: 'absolute', right: -14, bottom: -22, opacity: 0.13 }}>
               <Mascot mood="happy" size={132} />
             </View>
-            <Text variant="small" weight="bold" style={LABEL}>BALANCE</Text>
-            <Text variant="title" style={NUM} adjustsFontSizeToFit numberOfLines={1}>{formatPeso(total)}</Text>
+            <Text variant="small" weight="bold" style={LABEL}>{stash.stashed > 0 ? 'SPENDABLE' : 'BALANCE'}</Text>
+            <Text variant="title" style={NUM} adjustsFontSizeToFit numberOfLines={1}>{formatPeso(stash.stashed > 0 ? stash.spendable : stash.total)}</Text>
+            {stash.stashed > 0 && <Text variant="label" muted style={NUM}>{formatPeso(stash.stashed)} in stashes · {formatPeso(stash.total)} in total</Text>}
             {shown && (
               <View style={[styles.row, { flexWrap: 'wrap', gap: space[1] }]} accessibilityLiveRegion="polite">
                 <Text variant="label" muted>Showing <Text variant="label" weight="bold">{shown.name}</Text> only.</Text>
@@ -186,6 +188,43 @@ export default function MoneyScreen() {
             </View>
           </View>
         </View>
+
+        <Card>
+          <View style={[styles.row, { justifyContent: 'space-between' }]}>
+            <Text variant="small" weight="bold" style={LABEL}>STASHES</Text>
+            <Chip dashed label="Add" onPress={() => setSheet({ kind: 'stash', stash: null })} />
+          </View>
+          {stash.stashes.length === 0 ? (
+            <Text variant="label" muted>Set money aside for an emergency fund, tuition or anything else. It stays in its account but stops counting as spendable.</Text>
+          ) : stash.stashes.map((s) => {
+            const pct = stashProgress(s);
+            return (
+              <View key={s.id} style={{ gap: space[2], paddingTop: space[2], borderTopWidth: 1, borderColor: colors.line }}>
+                <Pressable accessibilityRole="button" accessibilityLabel={`Edit ${s.name}`} onPress={() => setSheet({ kind: 'stash', stash: s })} style={[styles.row, { minHeight: 44 }]}>
+                  <View style={{ flex: 1, gap: 2 }}>
+                    <Text weight="semi">{s.name}</Text>
+                    <Text variant="label" muted>{accountById.get(s.account_id)?.name}{s.goal_centavos ? ` · goal ${formatPeso(s.goal_centavos)}` : ''}</Text>
+                  </View>
+                  <Text weight="bold" style={NUM}>{formatPeso(s.amount_centavos)}</Text>
+                </Pressable>
+                {pct !== null && (
+                  <View accessibilityRole="progressbar" accessibilityLabel={`${s.name} goal`} accessibilityValue={{ min: 0, max: 100, now: pct }} style={{ height: 8, borderRadius: radius.pill, backgroundColor: colors.line, overflow: 'hidden' }}>
+                    <View style={{ width: `${pct}%`, height: 8, borderRadius: radius.pill, backgroundColor: colors.inkBlue }} />
+                  </View>
+                )}
+                <View style={[styles.row, { gap: space[2] }]}>
+                  <Chip label="Put in" onPress={() => setSheet({ kind: 'stashMove', stash: s, mode: 'in' })} />
+                  {s.amount_centavos > 0 && <Chip label="Take out" onPress={() => setSheet({ kind: 'stashMove', stash: s, mode: 'out' })} />}
+                </View>
+              </View>
+            );
+          })}
+          {stash.overdrawn.length > 0 && (
+            <Text variant="label" style={{ color: colors.amber }} accessibilityRole="alert">
+              More is set aside in {stash.overdrawn.map((a) => a.name).join(' and ')} than {stash.overdrawn.length === 1 ? 'it holds' : 'they hold'}. Take some out of a stash, or check that balance.
+            </Text>
+          )}
+        </Card>
 
         {shortcuts.length > 0 && (
           <View style={{ flexDirection: 'row', gap: 10 }}>
@@ -337,6 +376,8 @@ export default function MoneyScreen() {
       {sheet?.kind === 'transfer' && <TransferEditor accounts={accounts} onClose={() => setSheet(null)} />}
       {sheet?.kind === 'accounts' && <AccountsEditor accounts={accounts} onReset={() => setSheet({ kind: 'reset' })} onClose={() => setSheet(null)} />}
       {sheet?.kind === 'reset' && <ResetEditor count={transactions.length} onClose={() => setSheet(null)} />}
+      {sheet?.kind === 'stash' && <StashEditor stash={sheet.stash} accounts={accounts} count={stashes.length} startAccount={shown?.id} onClose={() => setSheet(null)} />}
+      {sheet?.kind === 'stashMove' && <StashMoveEditor stash={sheet.stash} mode={sheet.mode} free={stash.byAccount.get(sheet.stash.account_id)?.free ?? 0} accountName={accountById.get(sheet.stash.account_id)?.name ?? 'the account'} onClose={() => setSheet(null)} />}
       {sheet?.kind === 'categories' && <CategoriesEditor categories={categories} onClose={() => setSheet(null)} />}
     </View>
   );

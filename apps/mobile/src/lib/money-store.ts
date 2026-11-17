@@ -3,12 +3,12 @@ import * as Crypto from 'expo-crypto';
 import { useCallback, useEffect, useState } from 'react';
 import { AppState } from 'react-native';
 import {
-  ACCOUNTS_TABLE, CATEGORIES_TABLE, FIXED_EXPENSES_TABLE, MONEY_PLANS_TABLE, STARTER_ACCOUNTS, STARTER_CATEGORIES, TRANSACTIONS_TABLE, checkPassword, currentPlan, passwordProblem, resetMoneyRemote,
-  type Account, type Category, type FixedExpense, type MoneyPlan, type Transaction, type TransactionDraft,
+  ACCOUNTS_TABLE, CATEGORIES_TABLE, FIXED_EXPENSES_TABLE, MONEY_PLANS_TABLE, STARTER_ACCOUNTS, STARTER_CATEGORIES, STASHES_TABLE, TRANSACTIONS_TABLE, checkPassword, currentPlan, passwordProblem, resetMoneyRemote,
+  type Account, type Category, type FixedExpense, type MoneyPlan, type Stash, type Transaction, type TransactionDraft,
 } from '@dirary/shared';
 
 import { processCaptures } from './capture';
-import { readAccounts, readCategories, readFixedExpenses, readMoneyPlans, readTransactions, resetMoneyLocal, saveLocal } from './db';
+import { readAccounts, readCategories, readFixedExpenses, readMoneyPlans, readStashes, readTransactions, resetMoneyLocal, saveLocal } from './db';
 import { supabase } from './supabase';
 import { subscribeStore, syncTasks } from './tasks-store';
 import { refreshWidgets } from '../widgets/refresh';
@@ -129,6 +129,21 @@ export async function resetMoney(password: string): Promise<string | null> {
   return null;
 }
 
+/** Creates a stash, or changes one. The money never moves; a stash only marks part of an account as set aside. */
+export async function saveStash(stash: Stash | (Pick<Stash, 'name' | 'account_id' | 'amount_centavos' | 'goal_centavos'> & { sort_order: number })): Promise<void> {
+  const stamp = now();
+  const row: Stash = 'id' in stash
+    ? { ...stash, amount_centavos: Math.max(0, stash.amount_centavos), updated_at: stamp }
+    : { id: Crypto.randomUUID(), ...stash, amount_centavos: Math.max(0, stash.amount_centavos), created_at: stamp, updated_at: stamp, deleted_at: null };
+  await saveLocal(STASHES_TABLE, row);
+  await changed();
+}
+
+export async function removeStash(stash: Stash): Promise<void> {
+  await saveLocal(STASHES_TABLE, { ...stash, deleted_at: now(), updated_at: now() });
+  await changed();
+}
+
 /** One tap on first use: your three accounts plus Cash, and a starter set of categories. */
 export async function addStarterSet(): Promise<void> {
   const stamp = now();
@@ -156,10 +171,12 @@ export function useMoneyStore() {
   const [transactions, setTransactions] = useState<Transaction[]>([]);
   const [fixed, setFixed] = useState<FixedExpense[]>([]);
   const [plan, setPlan] = useState<MoneyPlan | null>(null);
+  const [stashes, setStashes] = useState<Stash[]>([]);
   const [loading, setLoading] = useState(true);
 
   const load = useCallback(async () => {
-    const [a, c, t, f, p] = await Promise.all([readAccounts(), readCategories(), readTransactions(), readFixedExpenses(), readMoneyPlans()]);
+    const [a, c, t, f, p, s] = await Promise.all([readAccounts(), readCategories(), readTransactions(), readFixedExpenses(), readMoneyPlans(), readStashes()]);
+    setStashes(s);
     setFixed(f);
     setPlan(currentPlan(p));
     setAccounts(a);
@@ -177,7 +194,7 @@ export function useMoneyStore() {
     const client = supabase;
     let channel = client?.channel('money_phone');
     if (channel) {
-      for (const table of [ACCOUNTS_TABLE, CATEGORIES_TABLE, TRANSACTIONS_TABLE, FIXED_EXPENSES_TABLE, MONEY_PLANS_TABLE]) channel = channel.on('postgres_changes', { event: '*', schema: 'public', table }, () => { syncTasks(); });
+      for (const table of [ACCOUNTS_TABLE, CATEGORIES_TABLE, TRANSACTIONS_TABLE, FIXED_EXPENSES_TABLE, MONEY_PLANS_TABLE, STASHES_TABLE]) channel = channel.on('postgres_changes', { event: '*', schema: 'public', table }, () => { syncTasks(); });
       channel.subscribe();
     }
     return () => {
@@ -188,5 +205,5 @@ export function useMoneyStore() {
     };
   }, [load]);
 
-  return { accounts, categories, transactions, fixed, plan, loading };
+  return { accounts, categories, transactions, fixed, plan, stashes, loading };
 }

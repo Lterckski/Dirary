@@ -1,8 +1,8 @@
 import { useCallback, useEffect, useState } from 'react';
 import {
   ACCOUNTS_TABLE, ACCOUNT_COLUMNS, CATEGORIES_TABLE, CATEGORY_COLUMNS, FIXED_EXPENSES_TABLE, FIXED_EXPENSE_COLUMNS, MONEY_PLANS_TABLE, MONEY_PLAN_COLUMNS,
-  STARTER_ACCOUNTS, STARTER_CATEGORIES, TRANSACTIONS_TABLE, TRANSACTION_COLUMNS, checkPassword, currentPlan, passwordProblem, resetMoneyRemote,
-  type Account, type Category, type FixedExpense, type MoneyPlan, type Transaction, type TransactionDraft,
+  STARTER_ACCOUNTS, STARTER_CATEGORIES, STASHES_TABLE, STASH_COLUMNS, TRANSACTIONS_TABLE, TRANSACTION_COLUMNS, checkPassword, currentPlan, passwordProblem, resetMoneyRemote,
+  type Account, type Category, type FixedExpense, type MoneyPlan, type Stash, type Transaction, type TransactionDraft,
 } from '@dirary/shared';
 import { supabase } from '../supabase';
 
@@ -24,19 +24,25 @@ export function useMoney() {
   const [transactions, setTransactions] = useState<Transaction[]>([]);
   const [fixed, setFixed] = useState<FixedExpense[]>([]);
   const [plans, setPlans] = useState<MoneyPlan[]>([]);
+  const [stashes, setStashes] = useState<Stash[]>([]);
+  /** False until the stashes SQL file has been run. The rest of Money works without it. */
+  const [stashesReady, setStashesReady] = useState(true);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
   const load = useCallback(async () => {
     if (!supabase) return;
-    const [a, c, t, f, p] = await Promise.all([
+    const [a, c, t, f, p, s] = await Promise.all([
       supabase.from(ACCOUNTS_TABLE).select(ACCOUNT_COLUMNS).is('deleted_at', null).order('sort_order').order('created_at'),
       supabase.from(CATEGORIES_TABLE).select(CATEGORY_COLUMNS).is('deleted_at', null).order('sort_order').order('created_at'),
       supabase.from(TRANSACTIONS_TABLE).select(TRANSACTION_COLUMNS).is('deleted_at', null).order('occurred_at', { ascending: false }).limit(5000),
       supabase.from(FIXED_EXPENSES_TABLE).select(FIXED_EXPENSE_COLUMNS).is('deleted_at', null).order('sort_order').order('created_at'),
       supabase.from(MONEY_PLANS_TABLE).select(MONEY_PLAN_COLUMNS).is('deleted_at', null),
+      supabase.from(STASHES_TABLE).select(STASH_COLUMNS).is('deleted_at', null).order('sort_order').order('created_at'),
     ]);
-    const failure = a.error ?? c.error ?? t.error ?? f.error ?? p.error;
+    const stashesMissing = s.error !== null && /relation .* does not exist|schema cache/i.test(s.error.message);
+    setStashesReady(!stashesMissing);
+    const failure = a.error ?? c.error ?? t.error ?? f.error ?? p.error ?? (stashesMissing ? null : s.error);
     if (failure) setError(friendly(failure.message));
     else {
       setAccounts(a.data as unknown as Account[]);
@@ -44,6 +50,7 @@ export function useMoney() {
       setTransactions(t.data as unknown as Transaction[]);
       setFixed(f.data as unknown as FixedExpense[]);
       setPlans(p.data as unknown as MoneyPlan[]);
+      setStashes((s.data ?? []) as unknown as Stash[]);
       setError(null);
     }
     setLoading(false);
@@ -54,7 +61,7 @@ export function useMoney() {
     if (!supabase) return;
     const client = supabase;
     let channel = client.channel('money_web');
-    for (const table of [ACCOUNTS_TABLE, CATEGORIES_TABLE, TRANSACTIONS_TABLE, FIXED_EXPENSES_TABLE, MONEY_PLANS_TABLE]) {
+    for (const table of [ACCOUNTS_TABLE, CATEGORIES_TABLE, TRANSACTIONS_TABLE, FIXED_EXPENSES_TABLE, MONEY_PLANS_TABLE, STASHES_TABLE]) {
       channel = channel.on('postgres_changes', { event: '*', schema: 'public', table }, load);
     }
     channel.subscribe();
@@ -212,11 +219,30 @@ export function useMoney() {
     if (failure) { load(); return friendly(failure); }
     setTransactions([]);
     setAccounts((all) => all.map((a) => ({ ...a, opening_balance_centavos: 0, updated_at: stamp })));
+    setStashes((all) => all.map((s) => ({ ...s, amount_centavos: 0, updated_at: stamp })));
     return null;
   }, [load]);
 
+  /** Creates a stash, or changes one when it has an id. */
+  const saveStash = useCallback((stash: { id?: string } & Pick<Stash, 'name' | 'account_id' | 'amount_centavos' | 'goal_centavos'>) => {
+    const stamp = now();
+    const fields = { name: stash.name, account_id: stash.account_id, amount_centavos: Math.max(0, stash.amount_centavos), goal_centavos: stash.goal_centavos };
+    const { id } = stash;
+    if (id) {
+      const change = { ...fields, updated_at: stamp };
+      return save(() => setStashes((all) => all.map((s) => (s.id === id ? { ...s, ...change } : s))), () => supabase!.from(STASHES_TABLE).update(change).eq('id', id));
+    }
+    const row: Stash = { id: crypto.randomUUID(), ...fields, sort_order: stashes.length, created_at: stamp, updated_at: stamp, deleted_at: null };
+    return save(() => setStashes((all) => [...all, row]), () => supabase!.from(STASHES_TABLE).insert(row));
+  }, [stashes.length, save]);
+
+  const removeStash = useCallback((id: string) => {
+    const change = { deleted_at: now(), updated_at: now() };
+    return save(() => setStashes((all) => all.filter((s) => s.id !== id)), () => supabase!.from(STASHES_TABLE).update(change).eq('id', id));
+  }, [save]);
+
   return {
-    resetMoney,
+    resetMoney, stashes, stashesReady, saveStash, removeStash,
     fixed, plan: currentPlan(plans), saveFixed, removeFixed, payFixed, setMonthlyBudget,
     accounts, categories, transactions, loading, error,
     addTransaction, updateTransaction, removeTransaction, linkTransfer, addTransfer, importTransactions,
@@ -227,7 +253,7 @@ export function useMoney() {
 export type MoneyStore = ReturnType<typeof useMoney>;
 
 function friendly(message: string): string {
-  if (/relation .* does not exist|schema cache|fixed_expense_id/i.test(message)) return "Some money tables aren't in Supabase yet. Run both Phase 2 SQL files (money, then plan), then reload.";
+  if (/relation .* does not exist|schema cache|fixed_expense_id/i.test(message)) return "Some money tables aren't in Supabase yet. Run the Phase 2 SQL files in order (money, plan, stashes), then reload.";
   if (/failed to fetch|network/i.test(message)) return "Couldn't reach the server. Check your connection and try again.";
   return message;
 }
