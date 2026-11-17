@@ -19,6 +19,7 @@ import { Button, Card, TAB_BAR_CLEARANCE, Text, styles } from '@/components/ui';
 import { useAddRequest } from '@/lib/add-bus';
 import { logFood, lookUpBarcode, removeFood, removeLog, saveFood, saveGoals, tapWater, updateLog, useHealthStore } from '@/lib/health-store';
 import { BarcodeScanner } from '@/components/barcode-scanner';
+import { WorkoutsTab } from '@/components/workouts-tab';
 import { ENTER, LEAVE } from '@/lib/motion';
 import { TransactionEditor } from '@/components/money-editor';
 import { readAccounts, readCategories } from '@/lib/db';
@@ -49,6 +50,7 @@ export default function HealthScreen() {
   const { foods, logs, goals, water, loading } = useHealthStore();
   const insets = useSafeAreaInsets();
   const [open, setOpen] = useState<Open>(null);
+  const [tab, setTab] = useState<'food' | 'workouts'>('food');
   const [query, setQuery] = useState('');
   const [forMeal, setForMeal] = useState<Meal | null>(null);
   const input = useRef<ComponentRef<typeof TextInput>>(null);
@@ -67,11 +69,14 @@ export default function HealthScreen() {
   const glassGoal = goals?.water_glasses ?? 8;
   const kcalLeft = goals?.kcal_target ? Math.round(goals.kcal_target - totals.kcal) : null;
 
-  useAddRequest('health', () => input.current?.focus());
+  useAddRequest('health', () => { setTab('food'); setTimeout(() => input.current?.focus(), 50); });
   // The Food widget's + opens Health with ?log=1; Money's "Log what you ate?" chip adds the place you paid as q.
-  const params = useLocalSearchParams<{ log?: string; q?: string }>();
+  const params = useLocalSearchParams<{ log?: string; q?: string; tab?: string }>();
+  // The Workouts widget opens Health with ?tab=workouts.
+  useEffect(() => { if (params.tab === 'workouts') setTab('workouts'); }, [params.tab]);
   useEffect(() => {
     if (!params.log) return;
+    setTab('food');
     if (params.q) setQuery(params.q);
     setTimeout(() => input.current?.focus(), 300);
   }, [params.log, params.q]);
@@ -122,12 +127,12 @@ export default function HealthScreen() {
             <Text variant="title" accessibilityRole="header" style={{ color: colors.onInkBlue }}>Health</Text>
           </View>
           <View style={{ width: 230, flexDirection: 'row', padding: 3, borderRadius: radius.pill, backgroundColor: colors.night }} accessibilityRole="tablist">
-            <View accessibilityRole="tab" accessibilityState={{ selected: true }} style={{ flex: 1, minHeight: 44, borderRadius: radius.pill, backgroundColor: colors.inkBlue, alignItems: 'center', justifyContent: 'center' }}>
-              <Text weight="bold" style={{ color: colors.onInkBlue }}>Food</Text>
-            </View>
-            <View accessibilityRole="tab" accessibilityState={{ disabled: true }} accessibilityHint="Workouts arrive in Phase 3b" style={{ flex: 1, minHeight: 44, alignItems: 'center', justifyContent: 'center' }}>
-              <Text weight="semi" muted>Workouts</Text>
-            </View>
+            {(['food', 'workouts'] as const).map((t) => (
+              <Pressable key={t} accessibilityRole="tab" accessibilityState={{ selected: tab === t }} onPress={() => setTab(t)}
+                style={{ flex: 1, minHeight: 44, borderRadius: radius.pill, backgroundColor: tab === t ? colors.inkBlue : 'transparent', alignItems: 'center', justifyContent: 'center' }}>
+                <Text weight={tab === t ? 'bold' : 'semi'} style={{ color: tab === t ? colors.onInkBlue : colors.muted }}>{t === 'food' ? 'Food' : 'Workouts'}</Text>
+              </Pressable>
+            ))}
           </View>
           <View pointerEvents="none" accessibilityElementsHidden importantForAccessibility="no-hide-descendants" style={{ position: 'absolute', right: space[6], bottom: 22 }}>
             <Mascot mood="happy" size={88} />
@@ -135,6 +140,7 @@ export default function HealthScreen() {
         </View>
 
         <View style={{ paddingHorizontal: space[5], gap: space[5], marginTop: -50 }}>
+          {tab === 'workouts' ? <WorkoutsTab /> : <>
           {!loading && (
             <Card style={{ borderRadius: 28 }}>
               <View style={[styles.row, { justifyContent: 'space-between' }]}>
@@ -265,6 +271,7 @@ export default function HealthScreen() {
               );
             })}
           </Card>
+          </>}
         </View>
       </ScrollView>
 

@@ -11,6 +11,7 @@ import { Modal } from '../ui';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { useMoney } from '../money/useMoney';
 import { TxDialog } from './Money';
+import { WorkoutsTab } from './Workouts';
 
 type Pick = { food: Food | null; starter: StarterFood | null };
 type Dialog =
@@ -31,6 +32,8 @@ const pct = (part: number, whole: number | null | undefined) => (whole ? Math.ma
 export function Health() {
   const store = useHealth();
   const money = useMoney();
+  const [tab, setTab] = useState<'food' | 'workouts'>(() => { try { return sessionStorage.getItem('dirary:health-tab') === 'workouts' ? 'workouts' : 'food'; } catch { return 'food'; } });
+  useEffect(() => { try { sessionStorage.setItem('dirary:health-tab', tab); } catch { /* private mode */ } }, [tab]);
   const { foods, logs, goals, water, loading, error } = store;
   // A meal logged with what you paid offers to log the expense; "Log it" opens the expense form, filled in.
   const [paid, setPaid] = useState<{ amount: number; note: string } | null>(null);
@@ -90,17 +93,18 @@ export function Health() {
         <div>
           <p className="hero-date">{new Date().toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' })}</p>
           <h1 className="display">Health</h1>
-          <div className="segmented slide-switch hero-switch" role="group" aria-label="Health section" style={{ '--n': 2, '--i': 0 } as CSSProperties}>
-            <button type="button" aria-pressed="true">Food</button>
-            <button type="button" aria-pressed="false" disabled title="Workouts arrive in Phase 3b">Workouts</button>
+          <div className="segmented slide-switch hero-switch" role="group" aria-label="Health section" style={{ '--n': 2, '--i': tab === 'food' ? 0 : 1 } as CSSProperties}>
+            <button type="button" aria-pressed={tab === 'food'} onClick={() => setTab('food')}>Food</button>
+            <button type="button" aria-pressed={tab === 'workouts'} onClick={() => setTab('workouts')}>Workouts</button>
           </div>
         </div>
       </header>
 
-      {error && <p className="note error" role="alert">{error}</p>}
-      {loading && !error && <p className="muted" role="status">Loading your food log…</p>}
+      {tab === 'workouts' && <WorkoutsTab />}
+      {tab === 'food' && error && <p className="note error" role="alert">{error}</p>}
+      {tab === 'food' && loading && !error && <p className="muted" role="status">Loading your food log…</p>}
 
-      {!loading && !error && (
+      {tab === 'food' && !loading && !error && (
         <div className="money-cols">
           <div className="money-col">
             <div className="peek">

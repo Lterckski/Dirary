@@ -1,5 +1,6 @@
-import { budgetCoach, currentGoals, dayTotals, foodCoach, localDate, monthSummary, spentOn, todayCoach, todayView, type InkMood, type Task } from '@dirary/shared';
-import { readCategories, readFoodLogs, readHealthGoals, readTasks, readTransactions } from '@/lib/db';
+import { addDays, budgetCoach, currentGoals, dayTotals, foodCoach, localDate, monthSummary, planOf, routineMinutes, spentOn, todayCoach, todayView, todaysWorkout, type InkMood, type Task } from '@dirary/shared';
+import { readCategories, readFoodLogs, readHealthGoals, readRoutines, readTasks, readTransactions, readWorkoutSessions } from '@/lib/db';
+import { todaysSteps } from '@/lib/steps';
 
 export interface WidgetData {
   /** Overdue first, then due today. */
@@ -18,6 +19,11 @@ export interface WidgetData {
   kcalTarget: number | null;
   proteinTarget: number | null;
   foodMood: InkMood;
+  /** Workouts: today's (null on a rest day), whether it's done, and steps if Health Connect lets us read them. */
+  workoutName: string | null;
+  workoutDone: boolean;
+  workoutLine: string;
+  steps: number | null;
 }
 
 /** What the widgets show, read straight from the phone's database so it works with the app closed. */
@@ -36,6 +42,10 @@ export async function widgetData(): Promise<WidgetData> {
   const [logs, goalRows] = await Promise.all([readFoodLogs(today).catch(() => []), readHealthGoals().catch(() => [])]);
   const food = dayTotals(logs, today);
   const goals = currentGoals(goalRows);
+  const [routines, sessions] = await Promise.all([readRoutines().catch(() => []), readWorkoutSessions(addDays(today, -1)).catch(() => [])]);
+  const workout = todaysWorkout(routines, sessions, today);
+  const plan = workout.routine ? planOf(workout.routine) : [];
+  const steps = await todaysSteps().then((s) => (s.kind === 'ok' ? s.steps : null)).catch(() => null);
 
   return {
     open: [...view.overdue, ...view.dueToday], done: view.done, total: view.total, mood: coach.mood, line: coach.line,
@@ -44,5 +54,9 @@ export async function widgetData(): Promise<WidgetData> {
     moneyMood: budgetCoach(month, now.getDate(), daysInMonth).mood,
     kcalEaten: food.kcal, proteinEaten: food.protein, kcalTarget: goals?.kcal_target ?? null, proteinTarget: goals?.protein_target_g ?? null,
     foodMood: foodCoach(food, goals, now.getHours()).mood,
+    workoutName: workout.session?.name ?? workout.routine?.name ?? null,
+    workoutDone: !!workout.session?.done_at,
+    workoutLine: workout.session?.done_at ? 'Done. Nice work.' : plan.length ? `${plan.length} exercise${plan.length === 1 ? '' : 's'} · about ${routineMinutes(plan)} min` : workout.session ? 'Under way' : 'Recovery counts too',
+    steps,
   };
 }

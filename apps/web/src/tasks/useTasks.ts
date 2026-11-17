@@ -86,8 +86,8 @@ export function useTasks() {
   }, [save, updateTask]);
 
   /**
-   * Adds bill tasks made by planBillTasks. Their ids are fixed, so one already in the database (the phone
-   * made it, or it was deleted) is skipped rather than brought back.
+   * Adds tasks made by the links to Money and Health (bills, planned workouts). Their ids are fixed, so one
+   * already in the database (the phone made it, or it was deleted) is skipped rather than brought back.
    */
   const addBillTasks = useCallback(async (rows: Task[]) => {
     if (!supabase || rows.length === 0) return;
@@ -98,6 +98,14 @@ export function useTasks() {
     if (missing.length === 0) return;
     await save(() => setTasks((all) => [...all, ...missing.filter((m) => !all.some((t) => t.id === m.id))]),
       () => supabase!.from(TASKS_TABLE).upsert(missing, { onConflict: 'id', ignoreDuplicates: true }));
+  }, [save]);
+
+  /** Adds the Workouts list unless a row with its fixed id exists already (made elsewhere, or deleted). */
+  const addListIfNew = useCallback(async (list: List) => {
+    if (!supabase) return;
+    const { data, error: lookup } = await supabase.from(LISTS_TABLE).select('id').eq('id', list.id);
+    if (lookup || (data ?? []).length > 0) return;
+    await save(() => setLists((all) => (all.some((l) => l.id === list.id) ? all : [...all, list])), () => supabase!.from(LISTS_TABLE).upsert(list, { onConflict: 'id', ignoreDuplicates: true }));
   }, [save]);
 
   /** Soft delete, so the phone can learn about it when it syncs. */
@@ -124,7 +132,7 @@ export function useTasks() {
     return save(() => setLists((all) => all.filter((l) => l.id !== id)), () => supabase!.from(LISTS_TABLE).update(change).eq('id', id));
   }, [save]);
 
-  return { tasks, lists, loading, error, addTask, addBillTasks, updateTask, toggleTask, removeTask, addList, renameList, removeList, reload: load };
+  return { tasks, lists, loading, error, addTask, addBillTasks, addListIfNew, updateTask, toggleTask, removeTask, addList, renameList, removeList, reload: load };
 }
 
 function friendly(message: string): string {

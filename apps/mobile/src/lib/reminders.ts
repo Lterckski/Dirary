@@ -46,7 +46,10 @@ export async function refreshReminders(tasks: readonly Task[]): Promise<void> {
     .sort((a, b) => Date.parse(a.remind_at as string) - Date.parse(b.remind_at as string))
     .slice(0, MAX_SCHEDULED);
 
-  await Notifications.cancelAllScheduledNotificationsAsync();
+  // Only task reminders are replaced; the rest timer's alert stays.
+  for (const scheduled of await Notifications.getAllScheduledNotificationsAsync()) {
+    if (scheduled.identifier.startsWith('task-')) await Notifications.cancelScheduledNotificationAsync(scheduled.identifier);
+  }
   for (const task of due) {
     await Notifications.scheduleNotificationAsync({
       identifier: `task-${task.id}`,
@@ -54,4 +57,22 @@ export async function refreshReminders(tasks: readonly Task[]): Promise<void> {
       trigger: { type: Notifications.SchedulableTriggerInputTypes.DATE, date: new Date(task.remind_at as string), channelId: CHANNEL },
     });
   }
+}
+
+const REST_ID = 'rest-timer';
+
+/** Buzzes when rest is over, even with the phone locked or Dirary in the background. */
+export async function scheduleRestAlert(seconds: number): Promise<void> {
+  await cancelRestAlert();
+  if (seconds <= 0 || !(await hasReminderPermission())) return;
+  await ensureChannel();
+  await Notifications.scheduleNotificationAsync({
+    identifier: REST_ID,
+    content: { title: 'Rest is over', body: 'Next set. Ink is watching.', data: { url: 'dirary://health' } },
+    trigger: { type: Notifications.SchedulableTriggerInputTypes.TIME_INTERVAL, seconds: Math.round(seconds), channelId: CHANNEL },
+  });
+}
+
+export async function cancelRestAlert(): Promise<void> {
+  await Notifications.cancelScheduledNotificationAsync(REST_ID).catch(() => {});
 }

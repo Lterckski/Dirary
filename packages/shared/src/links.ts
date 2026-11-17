@@ -26,13 +26,15 @@ function fnv(text: string, seed: number): string {
   return h.toString(16).padStart(8, '0');
 }
 
-/** The id of the task for one bill in one month ("YYYY-MM"). The same on every device. A version-8 UUID. */
-export function billTaskId(expenseId: string, month: string): string {
-  const key = `dirary-bill:${expenseId}:${month}`;
+/** A version-8 UUID that is always the same for the same key, so every device makes the same row. */
+export function stableUuid(key: string): string {
   const hex = [0, 1, 2, 3].map((seed) => fnv(key, seed * 0x9e3779b9)).join('');
   const variant = ((parseInt(hex[16]!, 16) & 0x3) | 0x8).toString(16);
   return `${hex.slice(0, 8)}-${hex.slice(8, 12)}-8${hex.slice(13, 16)}-${variant}${hex.slice(17, 20)}-${hex.slice(20, 32)}`;
 }
+
+/** The id of the task for one bill in one month ("YYYY-MM"). The same on every device. */
+export const billTaskId = (expenseId: string, month: string): string => stableUuid(`dirary-bill:${expenseId}:${month}`);
 
 /** "Pay Meralco · ₱2,340" */
 export function billTitle(expense: Pick<FixedExpense, 'name' | 'amount_centavos'>): string {

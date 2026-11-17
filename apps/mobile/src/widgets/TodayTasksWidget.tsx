@@ -123,3 +123,25 @@ export function FoodTodayWidget({ data }: { data: WidgetData }) {
     </FlexWidget>
   );
 }
+
+/** 2×2 widget: today's workout (or a rest day) and today's steps. Tap to open Workouts. */
+export function WorkoutTodayWidget({ data }: { data: WidgetData }) {
+  const mood = data.workoutDone ? 'cheer' : data.workoutName ? 'coach' : 'sleepy';
+  return (
+    <FlexWidget
+      clickAction="OPEN_URI" clickActionData={{ uri: 'dirary://health?tab=workouts' }}
+      style={{ height: 'match_parent', width: 'match_parent', flexDirection: 'column', justifyContent: 'space-between', backgroundColor: colors.surface, borderRadius: 28, padding: 14 }}>
+      <FlexWidget style={{ width: 'match_parent', flexDirection: 'row', alignItems: 'center', flexGap: 8 }}>
+        <FlexWidget style={{ width: 32, height: 32, borderRadius: 16, backgroundColor: colors.inkBlue, alignItems: 'center', justifyContent: 'center' }}>
+          <ImageWidget image={INK[mood]} imageWidth={28} imageHeight={28} />
+        </FlexWidget>
+        <TextWidget text="Today" style={{ fontSize: 13, fontWeight: '600', color: colors.muted }} />
+      </FlexWidget>
+      <FlexWidget style={{ flexDirection: 'column' }}>
+        <TextWidget text={data.workoutName ?? 'Rest day'} maxLines={1} truncate="END" style={{ fontSize: 22, fontWeight: '800', color: data.workoutDone ? colors.inkBlue : colors.text, adjustsFontSizeToFit: true }} />
+        <TextWidget text={data.workoutLine} maxLines={1} truncate="END" style={{ fontSize: 12, fontWeight: '600', color: colors.muted }} />
+      </FlexWidget>
+      <TextWidget text={data.steps === null ? ' ' : `${formatKcal(data.steps)} steps`} maxLines={1} style={{ fontSize: 12, fontWeight: '700', color: colors.inkBlue }} />
+    </FlexWidget>
+  );
+}

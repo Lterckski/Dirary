@@ -9,6 +9,8 @@ import { Mascot } from '../Mascot';
 import { DatePicker, TimePicker } from '../pickers';
 import { Modal } from '../ui';
 import { useBillTasks } from '../links/useBillTasks';
+import { useWorkoutTasks } from '../links/useWorkoutTasks';
+import { useWorkouts } from '../health/useWorkouts';
 import { useMoney } from '../money/useMoney';
 import { useTasks } from '../tasks/useTasks';
 import { TxDialog } from './Money';
@@ -21,6 +23,10 @@ export function Tasks() {
   const store = useTasks();
   const money = useMoney();
   const bills = useBillTasks(store, money);
+  const workouts = useWorkouts();
+  const workoutLink = useWorkoutTasks(store, workouts);
+  // A workout's task ticks the workout too; a bill's logs the payment; anything else just ticks.
+  const toggleLinked = (task: Task) => { if (!workoutLink.toggle(task)) bills.toggle(task); };
   const { tasks, lists, loading, error } = store;
   // Ticking "Buy dog food ₱450" offers to log the ₱450; tapping Log it opens the expense form, filled in.
   const [offer, setOffer] = useState<{ amount: number; note: string } | null>(null);
@@ -60,8 +66,8 @@ export function Tasks() {
   const [phases, setPhases] = useState<Record<string, Phase>>({});
   const waiting = useRef(new Map<string, { task: Task; timers: number[] }>());
   const lastDone = useRef(0);
-  const toggleRef = useRef(bills.toggle);
-  toggleRef.current = bills.toggle;
+  const toggleRef = useRef(toggleLinked);
+  toggleRef.current = toggleLinked;
   const setPhase = (id: string, phase: Phase | null) => setPhases((all) => {
     const next = { ...all };
     if (phase) next[id] = phase; else delete next[id];
@@ -73,7 +79,7 @@ export function Tasks() {
   }, []);
 
   function toggle(task: Task) {
-    if (task.status === 'done') return bills.toggle(task);
+    if (task.status === 'done') return toggleLinked(task);
     const pending = waiting.current.get(task.id);
     if (pending) {
       pending.timers.forEach(clearTimeout);
@@ -90,7 +96,7 @@ export function Tasks() {
         waiting.current.delete(task.id);
         setPhase(task.id, null);
         lastDone.current = Date.now();
-        bills.toggle(task);
+        toggleLinked(task);
         const amount = bills.isBill(task) || money.accounts.length === 0 ? null : amountInTask(task.title);
         if (amount) setOffer({ amount, note: taskWithoutAmount(task.title) });
       }, CHECKED_MS + FOLD_MS),

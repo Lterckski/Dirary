@@ -12,6 +12,8 @@ import {
   STASHES_TABLE, STASH_COLUMNS, TASKS_TABLE, TASK_COLUMNS, TRANSACTIONS_TABLE, TRANSACTION_COLUMNS, remoteWins,
   FOODS_TABLE, FOOD_COLUMNS, FOOD_LOGS_TABLE, FOOD_LOG_COLUMNS, HEALTH_GOALS_TABLE, HEALTH_GOAL_COLUMNS, WATER_LOGS_TABLE, WATER_LOG_COLUMNS,
   Food, FoodLog, HealthGoals, WaterLog,
+  EXERCISES_TABLE, EXERCISE_COLUMNS, ROUTINES_TABLE, ROUTINE_COLUMNS, WORKOUT_SESSIONS_TABLE, WORKOUT_SESSION_COLUMNS, WORKOUT_SETS_TABLE, WORKOUT_SET_COLUMNS,
+  BODY_METRICS_TABLE, BODY_METRIC_COLUMNS, Exercise, Routine, WorkoutSession, WorkoutSet, BodyMetric,
   type Account, type Category, type FixedExpense, type List, type MoneyPlan, type Stash, type Task, type Transaction,
 } from '@dirary/shared';
 
@@ -35,10 +37,17 @@ const TABLES: TableDef[] = [
   { name: FOOD_LOGS_TABLE, select: FOOD_LOG_COLUMNS, columns: cols(FOOD_LOG_COLUMNS), optional: true },
   { name: HEALTH_GOALS_TABLE, select: HEALTH_GOAL_COLUMNS, columns: cols(HEALTH_GOAL_COLUMNS), optional: true },
   { name: WATER_LOGS_TABLE, select: WATER_LOG_COLUMNS, columns: cols(WATER_LOG_COLUMNS), optional: true },
+  // Workouts (Phase 3b). Sets point at workouts and exercises, workouts at routines, so those sync first.
+  { name: EXERCISES_TABLE, select: EXERCISE_COLUMNS, columns: cols(EXERCISE_COLUMNS), optional: true },
+  { name: ROUTINES_TABLE, select: ROUTINE_COLUMNS, columns: cols(ROUTINE_COLUMNS), optional: true },
+  { name: WORKOUT_SESSIONS_TABLE, select: WORKOUT_SESSION_COLUMNS, columns: cols(WORKOUT_SESSION_COLUMNS), optional: true },
+  { name: WORKOUT_SETS_TABLE, select: WORKOUT_SET_COLUMNS, columns: cols(WORKOUT_SET_COLUMNS), optional: true },
+  { name: BODY_METRICS_TABLE, select: BODY_METRIC_COLUMNS, columns: cols(BODY_METRIC_COLUMNS), optional: true },
 ];
 const missingTable = (message: string) => /relation .* does not exist|schema cache/i.test(message);
 export type SyncedTable = typeof LISTS_TABLE | typeof TASKS_TABLE | typeof ACCOUNTS_TABLE | typeof CATEGORIES_TABLE | typeof FIXED_EXPENSES_TABLE | typeof MONEY_PLANS_TABLE | typeof TRANSACTIONS_TABLE | typeof STASHES_TABLE
-  | typeof FOODS_TABLE | typeof FOOD_LOGS_TABLE | typeof HEALTH_GOALS_TABLE | typeof WATER_LOGS_TABLE;
+  | typeof FOODS_TABLE | typeof FOOD_LOGS_TABLE | typeof HEALTH_GOALS_TABLE | typeof WATER_LOGS_TABLE
+  | typeof EXERCISES_TABLE | typeof ROUTINES_TABLE | typeof WORKOUT_SESSIONS_TABLE | typeof WORKOUT_SETS_TABLE | typeof BODY_METRICS_TABLE;
 /** Re-read a little before the cursor, so a change stamped by a device with a slow clock isn't missed. */
 const OVERLAP_MS = 10 * 60 * 1000;
 
@@ -98,6 +107,27 @@ export function db(): Promise<SQLite.SQLiteDatabase> {
       CREATE TABLE IF NOT EXISTS water_logs (
         id TEXT PRIMARY KEY NOT NULL, drunk_on TEXT NOT NULL, created_at TEXT NOT NULL, updated_at TEXT NOT NULL, deleted_at TEXT, dirty INTEGER NOT NULL DEFAULT 0
       );
+      CREATE TABLE IF NOT EXISTS exercises (
+        id TEXT PRIMARY KEY NOT NULL, name TEXT NOT NULL, muscle_group TEXT, starter_key TEXT,
+        created_at TEXT NOT NULL, updated_at TEXT NOT NULL, deleted_at TEXT, dirty INTEGER NOT NULL DEFAULT 0
+      );
+      CREATE TABLE IF NOT EXISTS routines (
+        id TEXT PRIMARY KEY NOT NULL, name TEXT NOT NULL, plan TEXT NOT NULL DEFAULT '[]', weekdays TEXT NOT NULL DEFAULT '', sort_order INTEGER NOT NULL DEFAULT 0,
+        created_at TEXT NOT NULL, updated_at TEXT NOT NULL, deleted_at TEXT, dirty INTEGER NOT NULL DEFAULT 0
+      );
+      CREATE TABLE IF NOT EXISTS workout_sessions (
+        id TEXT PRIMARY KEY NOT NULL, routine_id TEXT, name TEXT NOT NULL, planned_for TEXT, planned_date TEXT NOT NULL, started_at TEXT, done_at TEXT,
+        created_at TEXT NOT NULL, updated_at TEXT NOT NULL, deleted_at TEXT, dirty INTEGER NOT NULL DEFAULT 0
+      );
+      CREATE TABLE IF NOT EXISTS workout_sets (
+        id TEXT PRIMARY KEY NOT NULL, session_id TEXT NOT NULL, exercise_id TEXT NOT NULL, set_index INTEGER NOT NULL, weight_kg REAL NOT NULL DEFAULT 0, reps INTEGER NOT NULL,
+        performed_at TEXT NOT NULL, created_at TEXT NOT NULL, updated_at TEXT NOT NULL, deleted_at TEXT, dirty INTEGER NOT NULL DEFAULT 0
+      );
+      CREATE INDEX IF NOT EXISTS workout_sets_session_idx ON workout_sets (session_id);
+      CREATE TABLE IF NOT EXISTS body_metrics (
+        id TEXT PRIMARY KEY NOT NULL, weight_kg REAL NOT NULL, measured_on TEXT NOT NULL,
+        created_at TEXT NOT NULL, updated_at TEXT NOT NULL, deleted_at TEXT, dirty INTEGER NOT NULL DEFAULT 0
+      );
       CREATE TABLE IF NOT EXISTS money_plans (
         id TEXT PRIMARY KEY NOT NULL, monthly_budget_centavos INTEGER,
         created_at TEXT NOT NULL, updated_at TEXT NOT NULL, deleted_at TEXT, dirty INTEGER NOT NULL DEFAULT 0
@@ -123,7 +153,7 @@ async function upsert(database: SQLite.SQLiteDatabase, table: TableDef, row: Row
 const tableOf = (name: string) => TABLES.find((t) => t.name === name)!;
 
 /** Saves a row on the phone and marks it for syncing. */
-export async function saveLocal(table: SyncedTable, row: List | Task | Account | Category | Transaction | FixedExpense | MoneyPlan | Stash | Food | FoodLog | HealthGoals | WaterLog): Promise<void> {
+export async function saveLocal(table: SyncedTable, row: List | Task | Account | Category | Transaction | FixedExpense | MoneyPlan | Stash | Food | FoodLog | HealthGoals | WaterLog | Exercise | Routine | WorkoutSession | WorkoutSet | BodyMetric): Promise<void> {
   await upsert(await db(), tableOf(table), row as unknown as Row, 1);
 }
 
@@ -178,6 +208,31 @@ export async function readHealthGoals(): Promise<HealthGoals[]> {
 
 export async function readWater(since: string): Promise<WaterLog[]> {
   return (await db()).getAllAsync<WaterLog>(`SELECT ${WATER_LOG_COLUMNS} FROM water_logs WHERE deleted_at IS NULL AND drunk_on >= ? ORDER BY created_at`, [since]);
+}
+
+const parsed = <T,>(schema: { safeParse: (v: unknown) => { success: true; data: T } | { success: false } }, rows: unknown[]): T[] =>
+  rows.flatMap((r) => { const p = schema.safeParse(r); return p.success ? [p.data] : []; });
+
+export async function readExercises(): Promise<Exercise[]> {
+  return parsed(Exercise, await (await db()).getAllAsync(`SELECT ${EXERCISE_COLUMNS} FROM exercises WHERE deleted_at IS NULL ORDER BY name`));
+}
+export async function readRoutines(): Promise<Routine[]> {
+  return parsed(Routine, await (await db()).getAllAsync(`SELECT ${ROUTINE_COLUMNS} FROM routines WHERE deleted_at IS NULL ORDER BY sort_order`));
+}
+/** Workouts from `since` ("YYYY-MM-DD") on. */
+export async function readWorkoutSessions(since: string): Promise<WorkoutSession[]> {
+  return parsed(WorkoutSession, await (await db()).getAllAsync(`SELECT ${WORKOUT_SESSION_COLUMNS} FROM workout_sessions WHERE deleted_at IS NULL AND planned_date >= ? ORDER BY planned_date`, [since]));
+}
+export async function readWorkoutSets(since: string): Promise<WorkoutSet[]> {
+  return parsed(WorkoutSet, await (await db()).getAllAsync(`SELECT ${WORKOUT_SET_COLUMNS} FROM workout_sets WHERE deleted_at IS NULL AND performed_at >= ? ORDER BY performed_at`, [since]));
+}
+export async function readBodyMetrics(): Promise<BodyMetric[]> {
+  return parsed(BodyMetric, await (await db()).getAllAsync(`SELECT ${BODY_METRIC_COLUMNS} FROM body_metrics WHERE deleted_at IS NULL ORDER BY measured_on`));
+}
+/** Every workout and list id this phone has seen, deleted ones included. */
+export async function readAllIds(table: 'workout_sessions' | 'lists'): Promise<Set<string>> {
+  const rows = await (await db()).getAllAsync<{ id: string }>(`SELECT id FROM ${table}`);
+  return new Set(rows.map((r) => r.id));
 }
 
 export async function readMoneyPlans(): Promise<MoneyPlan[]> {

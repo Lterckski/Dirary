@@ -18,3 +18,5 @@ export * from './links';
 export * from './health';
 export * from './starterFoods';
 export * from './usda';
+export * from './workouts';
+export * from './workoutLinks';
