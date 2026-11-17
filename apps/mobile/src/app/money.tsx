@@ -1,24 +1,35 @@
 import { useEffect, useMemo, useState } from 'react';
 import { AppState, Pressable, ScrollView, Share, TextInput, View } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { Path, Svg } from 'react-native-svg';
 import { colors, radius, space } from '@dirary/ui';
 import {
-  accountBalance, budgetCoach, dayLabel, findTransferPairs, formatPeso, localDate, monthSummary, needsReview, parseMoneyQuickAdd, recentTransactions, spentOn,
-  type Transaction,
+  accountBalance, budgetCoach, dayLabel, dueLabel, findTransferPairs, fixedThisMonth, formatPeso, localDate, monthSummary, needsReview, parseMoneyQuickAdd, recentTransactions, safeToSpend, spendCoach,
+  type Institution, type Transaction,
 } from '@dirary/shared';
 
 import { Mascot } from '@/components/mascot';
-import { AccountsEditor, CategoriesEditor, TransactionEditor, TransferEditor, TxRow } from '@/components/money-editor';
+import { AccountsEditor, BudgetEditor, CategoriesEditor, FixedEditor, TransactionEditor, TransferEditor, TxRow } from '@/components/money-editor';
 import { Chip, Group } from '@/components/task-bits';
-import { Button, Card, Text, styles } from '@/components/ui';
-import { addStarterSet, addTransaction, linkTransfer, logCaptured, updateTransaction, useMoneyStore } from '@/lib/money-store';
+import { Button, Card, TAB_BAR_CLEARANCE, Text, styles } from '@/components/ui';
+import { useAddRequest } from '@/lib/add-bus';
+import { addStarterSet, addTransaction, linkTransfer, logCaptured, payFixed, removeTransaction, updateTransaction, useMoneyStore } from '@/lib/money-store';
 import { Sheet } from '@/components/task-editor';
 import { captureAvailable, captureCount, clearCaptures, getCaptures, isCaptureEnabled, openCaptureSettings, type Capture } from '../../modules/dirary-capture';
 
 const toLocal = (iso: string) => localDate(new Date(iso));
-type Sheet = { kind: 'tx'; tx: Transaction | null } | { kind: 'accounts' } | { kind: 'categories' } | { kind: 'transfer' } | null;
+/** Who the app greets. Dirary is a one-person app. */
+const GREETING_NAME = 'Luther';
+/** Each account card in the wallet takes its colour from where the money is kept. */
+const CARD_COLOR: Record<Institution, string> = { securitybank: colors.amber, gotyme: colors.tongue, gcash: colors.inkBlue, cash: colors.text, other: colors.muted };
+const LABEL = { letterSpacing: 1.4, color: colors.muted } as const;
+const NUM = { fontVariant: ['tabular-nums' as const] };
+
+type Sheet = { kind: 'tx'; tx: Transaction | null; categoryId?: string } | { kind: 'fixed' } | { kind: 'budget' } | { kind: 'accounts' } | { kind: 'categories' } | { kind: 'transfer' } | null;
 
 export default function MoneyScreen() {
-  const { accounts, categories, transactions, loading } = useMoneyStore();
+  const { accounts, categories, transactions, fixed, plan, loading } = useMoneyStore();
+  const insets = useSafeAreaInsets();
   const [sheet, setSheet] = useState<Sheet>(null);
   const [text, setText] = useState('');
   const today = localDate();
@@ -26,14 +37,24 @@ export default function MoneyScreen() {
   const daysInMonth = new Date(now.getFullYear(), now.getMonth() + 1, 0).getDate();
 
   const summary = useMemo(() => monthSummary(transactions, categories, today.slice(0, 7), toLocal), [transactions, categories, today]);
-  const coach = budgetCoach(summary, now.getDate(), daysInMonth);
+  const fixedSummary = useMemo(() => fixedThisMonth(fixed, transactions, today, toLocal), [fixed, transactions, today]);
+  const safe = useMemo(() => safeToSpend(plan, fixed, transactions, today, toLocal), [plan, fixed, transactions, today]);
+  // Ink speaks about today's allowance first; a category over budget takes over when there is one.
+  const budgetLine = budgetCoach(summary, now.getDate(), daysInMonth);
+  const coach = budgetLine.mood === 'worried' && safe.safeToday >= 0 ? budgetLine : spendCoach(safe, fixedSummary, formatPeso);
+  const total = accounts.reduce((sum, a) => sum + accountBalance(a, transactions), 0);
+  const safePct = safe.dailyLimit === 0 ? (safe.spentToday > 0 ? 100 : 0) : Math.min(100, Math.round((safe.spentToday / safe.dailyLimit) * 100));
+  const shortcuts = categories.filter((c) => c.kind === 'expense').slice(0, 4);
+  const over = safe.ready && safe.safeToday < 0;
+
+  // The floating + button opens the add form.
+  useAddRequest('money', () => setSheet({ kind: 'tx', tx: null }));
   const inbox = useMemo(() => needsReview(transactions), [transactions]);
   const pairs = useMemo(() => findTransferPairs(inbox), [inbox]);
   const paired = new Set(pairs.flatMap((p) => [p.out.id, p.into.id]));
   const recent = useMemo(() => recentTransactions(transactions, 40), [transactions]);
   const accountById = useMemo(() => new Map(accounts.map((a) => [a.id, a])), [accounts]);
   const categoryById = useMemo(() => new Map(categories.map((c) => [c.id, c])), [categories]);
-  const budgetPct = summary.budgeted === 0 ? 0 : Math.min(100, Math.round((summary.budgetSpent / summary.budgeted) * 100));
 
   const read = parseMoneyQuickAdd(text, categories, accounts);
   const account = accounts.find((a) => a.id === read.account_id) ?? accounts[0];
@@ -54,11 +75,11 @@ export default function MoneyScreen() {
     <TxRow key={t.id} tx={t} account={t.account_id ? accountById.get(t.account_id) : undefined} category={t.category_id ? categoryById.get(t.category_id) : undefined} onOpen={() => setSheet({ kind: 'tx', tx: t })} action={action} />
   );
 
-  if (loading) return <View style={[styles.screen, { padding: space[5] }]}><Text muted>Loading your money…</Text></View>;
+  if (loading) return <View style={[styles.screen, { padding: space[5], paddingTop: insets.top + space[5] }]}><Text muted>Loading your money…</Text></View>;
 
   if (accounts.length === 0 && categories.length === 0) {
     return (
-      <View style={[styles.screen, { padding: space[5], justifyContent: 'center' }]}>
+      <View style={[styles.screen, { padding: space[5], paddingBottom: TAB_BAR_CLEARANCE, justifyContent: 'center' }]}>
         <Card style={{ alignItems: 'center', paddingVertical: space[8] }}>
           <Mascot mood="coach" size={128} />
           <Text style={{ textAlign: 'center' }}>Start with your accounts and a few categories. You can rename or remove any of them later.</Text>
@@ -70,16 +91,40 @@ export default function MoneyScreen() {
 
   return (
     <View style={styles.screen}>
-      <ScrollView contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
-        <Card>
-          <Text variant="hero" style={{ fontVariant: ['tabular-nums'] }}>{formatPeso(summary.spent)}<Text variant="heading" muted> spent</Text></Text>
-          <Text variant="label" muted style={{ fontVariant: ['tabular-nums'] }}>{formatPeso(summary.income, { sign: true })} in · {formatPeso(spentOn(transactions, today, toLocal))} today</Text>
-          {summary.budgeted > 0 && (
+      <ScrollView contentContainerStyle={{ paddingBottom: TAB_BAR_CLEARANCE }} keyboardShouldPersistTaps="handled">
+        <View style={{ backgroundColor: colors.inkBlue, borderBottomLeftRadius: 36, borderBottomRightRadius: 36, paddingTop: insets.top + space[4], paddingHorizontal: space[5], paddingBottom: 72 }}>
+          <Text variant="small" weight="bold" style={{ color: colors.onInkBlue, letterSpacing: 1.3 }}>{now.toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' }).toUpperCase()}</Text>
+          <Text variant="title" accessibilityRole="header" style={{ color: colors.onInkBlue }}>Hello, {GREETING_NAME}!</Text>
+          {/* Ink sits behind the first card and peeks over its top edge. */}
+          <View pointerEvents="none" accessibilityElementsHidden importantForAccessibility="no-hide-descendants" style={{ position: 'absolute', right: space[6], bottom: 22 }}>
+            <Mascot mood={coach.mood} size={96} />
+          </View>
+        </View>
+
+        <View style={{ paddingHorizontal: space[5], gap: space[5], marginTop: -50 }}>
+        <Card style={{ borderRadius: 28 }}>
+          <View style={[styles.row, { justifyContent: 'space-between' }]}>
+            <Text variant="small" weight="bold" style={LABEL}>SAFE TO SPEND TODAY</Text>
+            <Pressable accessibilityRole="button" accessibilityLabel="Set monthly budget" onPress={() => setSheet({ kind: 'budget' })} hitSlop={2}
+              style={{ width: 44, height: 44, borderRadius: 22, backgroundColor: colors.raised, alignItems: 'center', justifyContent: 'center' }}>
+              <Svg width={18} height={18} viewBox="0 0 24 24"><Path d="M4 20h4L19 9l-4-4L4 16v4z" fill="none" stroke={colors.text} strokeWidth={2} strokeLinejoin="round" /></Svg>
+            </Pressable>
+          </View>
+          {safe.ready ? (
             <>
-              <View accessibilityRole="progressbar" accessibilityLabel="Budget used this month" accessibilityValue={{ min: 0, max: 100, now: budgetPct }} style={{ height: 12, borderRadius: radius.pill, backgroundColor: colors.line, overflow: 'hidden' }}>
-                <View style={{ width: `${budgetPct}%`, height: 12, borderRadius: radius.pill, backgroundColor: budgetPct >= 100 ? colors.red : colors.inkBlue }} />
+              <Text variant="hero" style={[NUM, over && { color: colors.red }]} adjustsFontSizeToFit numberOfLines={1}>{formatPeso(safe.safeToday)}</Text>
+              <Text variant="label" muted style={NUM}>of {formatPeso(safe.dailyLimit)} daily limit</Text>
+              <View accessibilityRole="progressbar" accessibilityLabel="Today's limit used" accessibilityValue={{ min: 0, max: 100, now: safePct }} style={{ height: 12, borderRadius: radius.pill, backgroundColor: colors.line, overflow: 'hidden' }}>
+                <View style={{ width: `${safePct}%`, height: 12, borderRadius: radius.pill, backgroundColor: over ? colors.red : colors.inkBlue }} />
               </View>
-              <Text variant="label" muted>{formatPeso(summary.budgetSpent)} of {formatPeso(summary.budgeted)} budgeted</Text>
+              <Text weight="bold" style={NUM}>Today spent: {formatPeso(safe.spentToday)}</Text>
+              <Text variant="label" muted style={NUM}>{safe.daysLeft} day{safe.daysLeft === 1 ? '' : 's'} left · {formatPeso(safe.leftThisMonth)} for the month</Text>
+            </>
+          ) : (
+            <>
+              <Text variant="hero" style={NUM} adjustsFontSizeToFit numberOfLines={1}>{formatPeso(safe.spentToday)}</Text>
+              <Text variant="label" muted>spent today</Text>
+              <View style={styles.row}><Button primary label="Set a monthly budget" onPress={() => setSheet({ kind: 'budget' })} /></View>
             </>
           )}
           <View style={styles.row}>
@@ -89,6 +134,45 @@ export default function MoneyScreen() {
             <Text style={{ flex: 1 }} accessibilityLiveRegion="polite">{coach.line}</Text>
           </View>
         </Card>
+
+        {/* The wallet: account cards tucked into a stitched pocket. */}
+        <View>
+          <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 6, paddingHorizontal: 14, paddingTop: 8, flexGrow: 1 }}>
+            {accounts.map((a, i) => (
+              <View key={a.id} accessible accessibilityLabel={`${a.name}, ${formatPeso(accountBalance(a, transactions))}`}
+                style={{ flexGrow: 1, minWidth: 112, marginTop: i % 2 ? 8 : 0, paddingTop: space[3], paddingHorizontal: 14, paddingBottom: 40, borderTopLeftRadius: 16, borderTopRightRadius: 16, backgroundColor: CARD_COLOR[a.institution], gap: 2 }}>
+                <Text variant="small" weight="bold" numberOfLines={1} style={{ color: colors.onInkBlue }}>{a.name}</Text>
+                <Text variant="label" weight="bold" numberOfLines={1} style={[NUM, { color: colors.onInkBlue }]}>{formatPeso(accountBalance(a, transactions))}</Text>
+              </View>
+            ))}
+          </ScrollView>
+          <View style={{ marginTop: -28, padding: space[6], borderRadius: 28, borderWidth: 1, borderColor: colors.line, backgroundColor: colors.raised, overflow: 'hidden', gap: 6 }}>
+            <View pointerEvents="none" style={{ position: 'absolute', top: 9, left: 9, right: 9, bottom: 9, borderRadius: 20, borderWidth: 1.5, borderStyle: 'dashed', borderColor: colors.line }} />
+            <View pointerEvents="none" accessibilityElementsHidden importantForAccessibility="no-hide-descendants" style={{ position: 'absolute', right: -14, bottom: -22, opacity: 0.13 }}>
+              <Mascot mood="happy" size={132} />
+            </View>
+            <Text variant="small" weight="bold" style={LABEL}>BALANCE</Text>
+            <Text variant="title" style={NUM} adjustsFontSizeToFit numberOfLines={1}>{formatPeso(total)}</Text>
+            <View style={[styles.row, { flexWrap: 'wrap', gap: space[2], marginTop: space[2] }]}>
+              {accounts.length > 1 && <Chip label="Transfer" onPress={() => setSheet({ kind: 'transfer' })} />}
+              <Chip label="Edit accounts" onPress={() => setSheet({ kind: 'accounts' })} />
+            </View>
+          </View>
+        </View>
+
+        {shortcuts.length > 0 && (
+          <View style={{ flexDirection: 'row', gap: 10 }}>
+            {shortcuts.map((c) => (
+              <Pressable key={c.id} accessibilityRole="button" accessibilityLabel={`Add ${c.name} spending`} onPress={() => setSheet({ kind: 'tx', tx: null, categoryId: c.id })}
+                style={({ pressed }) => ({ flex: 1, minHeight: 88, borderRadius: 22, borderWidth: 1, borderColor: colors.line, backgroundColor: colors.surface, alignItems: 'center', justifyContent: 'center', gap: space[2], paddingHorizontal: 6, opacity: pressed ? 0.7 : 1 })}>
+                <View style={{ width: 34, height: 34, borderRadius: 17, backgroundColor: colors[c.color], alignItems: 'center', justifyContent: 'center' }}>
+                  <Text variant="heading" style={{ color: colors.onInkBlue, fontSize: 17, lineHeight: 22 }}>{c.name.charAt(0)}</Text>
+                </View>
+                <Text variant="small" weight="bold" numberOfLines={1} style={{ letterSpacing: 0.5 }}>{c.name.toUpperCase()}</Text>
+              </Pressable>
+            ))}
+          </View>
+        )}
 
         <View style={{ gap: space[2] }}>
           <View style={styles.row}>
@@ -100,23 +184,42 @@ export default function MoneyScreen() {
               ? <>Adds <Text variant="label" weight="semi" style={{ color: colors.inkBlue }}>{formatPeso(read.direction === 'in' ? read.amount_centavos : -read.amount_centavos, { sign: true })}</Text>{read.merchant ? ` · ${read.merchant}` : ''} · {categoryById.get(read.category_id ?? '')?.name ?? 'no category'} · {account.name}</>
               : 'Amount, what it was, #category and @account. Start with + for money in.'}
           </Text>
-          <View style={[styles.row, { flexWrap: 'wrap' }]}>
-            <Chip dashed label="More options" onPress={() => setSheet({ kind: 'tx', tx: null })} />
-            {accounts.length > 1 && <Chip dashed label="Transfer" onPress={() => setSheet({ kind: 'transfer' })} />}
-          </View>
         </View>
 
-        <Group title="Accounts">
-          <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: space[2] }}>
-            {accounts.map((a) => (
-              <View key={a.id} style={{ flexGrow: 1, flexBasis: '45%', padding: space[4], borderRadius: radius.lg, borderWidth: 1, borderColor: colors.line, backgroundColor: colors.surface, gap: 4 }}>
-                <Text variant="label" muted>{a.name}</Text>
-                <Text variant="heading" style={{ fontVariant: ['tabular-nums'] }}>{formatPeso(accountBalance(a, transactions))}</Text>
-              </View>
-            ))}
+        <Card>
+          <View style={[styles.row, { justifyContent: 'space-between' }]}>
+            <Text variant="small" weight="bold" style={LABEL}>FIXED THIS MONTH</Text>
+            <Chip dashed label={fixedSummary.items.length > 0 ? 'Edit' : 'Add'} onPress={() => setSheet({ kind: 'fixed' })} />
           </View>
-          <View style={styles.row}><Chip dashed label="Edit accounts" onPress={() => setSheet({ kind: 'accounts' })} /></View>
-        </Group>
+          {fixedSummary.items.length === 0 ? (
+            <Text variant="label" muted>Add what you pay every month, like rent, internet or a subscription. Dirary sets that money aside before working out what's safe to spend.</Text>
+          ) : (
+            <>
+              <Text variant="label" muted style={NUM}>{formatPeso(fixedSummary.paid)} of {formatPeso(fixedSummary.total)} paid</Text>
+              {fixedSummary.items.map((i) => {
+                const edge = i.paid || i.dueIn > 3 ? colors.inkBlue : i.dueIn < 0 ? colors.red : colors.amber;
+                return (
+                  <View key={i.expense.id} style={{ flexDirection: 'row', alignItems: 'center', marginLeft: -space[3] }}>
+                    <Pressable
+                      accessibilityRole="checkbox" accessibilityState={{ checked: i.paid }}
+                      accessibilityLabel={`${i.expense.name}, ${formatPeso(i.expense.amount_centavos)}, mark ${i.paid ? 'not paid' : 'paid'}`}
+                      onPress={() => (i.payment ? removeTransaction(i.payment) : payFixed(i.expense, accounts[0]?.id ?? null))}
+                      style={{ width: 48, height: 48, alignItems: 'center', justifyContent: 'center' }}>
+                      <View style={{ width: 26, height: 26, borderRadius: radius.sm, borderWidth: 2.5, borderColor: edge, backgroundColor: i.paid ? colors.inkBlue : 'transparent', alignItems: 'center', justifyContent: 'center' }}>
+                        {i.paid && <Svg width={16} height={16} viewBox="0 0 16 16"><Path d="M3 8.5 6.5 12 13 4.5" fill="none" stroke={colors.onInkBlue} strokeWidth={2.6} strokeLinecap="round" strokeLinejoin="round" /></Svg>}
+                      </View>
+                    </Pressable>
+                    <View style={{ flex: 1, gap: 2 }}>
+                      <Text weight={i.paid ? 'medium' : 'semi'} style={i.paid ? { color: colors.faint, textDecorationLine: 'line-through' } : undefined}>{i.expense.name}</Text>
+                      {!i.paid && <Text variant="label" style={{ color: i.dueIn < 0 ? colors.red : i.dueIn <= 3 ? colors.amber : colors.muted }}>{dueLabel(i)}</Text>}
+                    </View>
+                    <Text weight="bold" style={[NUM, i.paid && { color: colors.faint }]}>{formatPeso(i.expense.amount_centavos)}</Text>
+                  </View>
+                );
+              })}
+            </>
+          )}
+        </Card>
 
         <CaptureCard />
 
@@ -181,9 +284,12 @@ export default function MoneyScreen() {
             <Text muted style={{ textAlign: 'center' }}>No transactions yet. Add one above.</Text>
           </Card>
         ) : days.map((d) => <Group key={d.date} title={dayLabel(d.date, today)}>{d.rows.map((t) => row(t))}</Group>)}
+        </View>
       </ScrollView>
 
-      {sheet?.kind === 'tx' && <TransactionEditor tx={sheet.tx} accounts={accounts} categories={categories} onClose={() => setSheet(null)} />}
+      {sheet?.kind === 'fixed' && <FixedEditor fixed={fixed} accounts={accounts} categories={categories} onClose={() => setSheet(null)} />}
+      {sheet?.kind === 'budget' && <BudgetEditor plan={plan} fixedTotal={fixedSummary.total} onClose={() => setSheet(null)} />}
+      {sheet?.kind === 'tx' && <TransactionEditor tx={sheet.tx} categoryId={sheet.categoryId} accounts={accounts} categories={categories} onClose={() => setSheet(null)} />}
       {sheet?.kind === 'transfer' && <TransferEditor accounts={accounts} onClose={() => setSheet(null)} />}
       {sheet?.kind === 'accounts' && <AccountsEditor accounts={accounts} onClose={() => setSheet(null)} />}
       {sheet?.kind === 'categories' && <CategoriesEditor categories={categories} onClose={() => setSheet(null)} />}

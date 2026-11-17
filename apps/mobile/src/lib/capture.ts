@@ -38,6 +38,7 @@ export async function processCaptures(): Promise<number> {
         status: 'needs_review',
         fingerprint: parsed.fingerprint,
         transfer_group_id: null,
+        fixed_expense_id: null,
         created_at: stamp,
         updated_at: stamp,
         deleted_at: null,

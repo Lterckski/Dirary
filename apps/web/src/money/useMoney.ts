@@ -1,7 +1,8 @@
 import { useCallback, useEffect, useState } from 'react';
 import {
-  ACCOUNTS_TABLE, ACCOUNT_COLUMNS, CATEGORIES_TABLE, CATEGORY_COLUMNS, STARTER_ACCOUNTS, STARTER_CATEGORIES, TRANSACTIONS_TABLE, TRANSACTION_COLUMNS,
-  type Account, type Category, type Transaction, type TransactionDraft,
+  ACCOUNTS_TABLE, ACCOUNT_COLUMNS, CATEGORIES_TABLE, CATEGORY_COLUMNS, FIXED_EXPENSES_TABLE, FIXED_EXPENSE_COLUMNS, MONEY_PLANS_TABLE, MONEY_PLAN_COLUMNS,
+  STARTER_ACCOUNTS, STARTER_CATEGORIES, TRANSACTIONS_TABLE, TRANSACTION_COLUMNS, currentPlan,
+  type Account, type Category, type FixedExpense, type MoneyPlan, type Transaction, type TransactionDraft,
 } from '@dirary/shared';
 import { supabase } from '../supabase';
 
@@ -11,7 +12,7 @@ type Result = PromiseLike<{ error: { message: string } | null }>;
 function newTransaction(draft: TransactionDraft, extra: Partial<Transaction> = {}): Transaction {
   const stamp = now();
   return {
-    id: crypto.randomUUID(), ...draft, source: 'manual', status: 'confirmed', fingerprint: null, transfer_group_id: null,
+    id: crypto.randomUUID(), ...draft, source: 'manual', status: 'confirmed', fingerprint: null, transfer_group_id: null, fixed_expense_id: null,
     created_at: stamp, updated_at: stamp, deleted_at: null, ...extra,
   };
 }
@@ -21,22 +22,28 @@ export function useMoney() {
   const [accounts, setAccounts] = useState<Account[]>([]);
   const [categories, setCategories] = useState<Category[]>([]);
   const [transactions, setTransactions] = useState<Transaction[]>([]);
+  const [fixed, setFixed] = useState<FixedExpense[]>([]);
+  const [plans, setPlans] = useState<MoneyPlan[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
   const load = useCallback(async () => {
     if (!supabase) return;
-    const [a, c, t] = await Promise.all([
+    const [a, c, t, f, p] = await Promise.all([
       supabase.from(ACCOUNTS_TABLE).select(ACCOUNT_COLUMNS).is('deleted_at', null).order('sort_order').order('created_at'),
       supabase.from(CATEGORIES_TABLE).select(CATEGORY_COLUMNS).is('deleted_at', null).order('sort_order').order('created_at'),
       supabase.from(TRANSACTIONS_TABLE).select(TRANSACTION_COLUMNS).is('deleted_at', null).order('occurred_at', { ascending: false }).limit(5000),
+      supabase.from(FIXED_EXPENSES_TABLE).select(FIXED_EXPENSE_COLUMNS).is('deleted_at', null).order('sort_order').order('created_at'),
+      supabase.from(MONEY_PLANS_TABLE).select(MONEY_PLAN_COLUMNS).is('deleted_at', null),
     ]);
-    const failure = a.error ?? c.error ?? t.error;
+    const failure = a.error ?? c.error ?? t.error ?? f.error ?? p.error;
     if (failure) setError(friendly(failure.message));
     else {
       setAccounts(a.data as unknown as Account[]);
       setCategories(c.data as unknown as Category[]);
       setTransactions(t.data as unknown as Transaction[]);
+      setFixed(f.data as unknown as FixedExpense[]);
+      setPlans(p.data as unknown as MoneyPlan[]);
       setError(null);
     }
     setLoading(false);
@@ -47,7 +54,7 @@ export function useMoney() {
     if (!supabase) return;
     const client = supabase;
     let channel = client.channel('money_web');
-    for (const table of [ACCOUNTS_TABLE, CATEGORIES_TABLE, TRANSACTIONS_TABLE]) {
+    for (const table of [ACCOUNTS_TABLE, CATEGORIES_TABLE, TRANSACTIONS_TABLE, FIXED_EXPENSES_TABLE, MONEY_PLANS_TABLE]) {
       channel = channel.on('postgres_changes', { event: '*', schema: 'public', table }, load);
     }
     channel.subscribe();
@@ -157,7 +164,46 @@ export function useMoney() {
     );
   }, [accounts.length, categories.length, save]);
 
+  const saveFixed = useCallback((expense: { id?: string } & Pick<FixedExpense, 'name' | 'amount_centavos' | 'due_day' | 'category_id' | 'account_id'>) => {
+    const stamp = now();
+    const { id } = expense;
+    const fields = { name: expense.name, amount_centavos: expense.amount_centavos, due_day: expense.due_day, category_id: expense.category_id, account_id: expense.account_id };
+    if (id) {
+      const change = { ...fields, updated_at: stamp };
+      return save(() => setFixed((all) => all.map((e) => (e.id === id ? { ...e, ...change } : e))), () => supabase!.from(FIXED_EXPENSES_TABLE).update(change).eq('id', id));
+    }
+    const row: FixedExpense = { id: crypto.randomUUID(), ...fields, sort_order: fixed.length, created_at: stamp, updated_at: stamp, deleted_at: null };
+    return save(() => setFixed((all) => [...all, row]), () => supabase!.from(FIXED_EXPENSES_TABLE).insert(row));
+  }, [fixed.length, save]);
+
+  const removeFixed = useCallback((id: string) => {
+    const change = { deleted_at: now(), updated_at: now() };
+    return save(() => setFixed((all) => all.filter((e) => e.id !== id)), () => supabase!.from(FIXED_EXPENSES_TABLE).update(change).eq('id', id));
+  }, [save]);
+
+  /** Ticking a fixed expense logs its payment, linked to it so it counts as paid this month. */
+  const payFixed = useCallback((expense: FixedExpense, fallbackAccountId: string | null) => {
+    const row = newTransaction(
+      { account_id: expense.account_id ?? fallbackAccountId, category_id: expense.category_id, amount_centavos: expense.amount_centavos, direction: 'out', merchant: expense.name, note: null, occurred_at: now() },
+      { fixed_expense_id: expense.id },
+    );
+    return save(() => setTransactions((all) => [row, ...all]), () => supabase!.from(TRANSACTIONS_TABLE).insert(row));
+  }, [save]);
+
+  /** Sets the monthly budget (null clears it). There is one plan; it is created on first use. */
+  const setMonthlyBudget = useCallback((monthly_budget_centavos: number | null) => {
+    const stamp = now();
+    const existing = currentPlan(plans);
+    if (existing) {
+      const change = { monthly_budget_centavos, updated_at: stamp };
+      return save(() => setPlans((all) => all.map((p) => (p.id === existing.id ? { ...p, ...change } : p))), () => supabase!.from(MONEY_PLANS_TABLE).update(change).eq('id', existing.id));
+    }
+    const row: MoneyPlan = { id: crypto.randomUUID(), monthly_budget_centavos, created_at: stamp, updated_at: stamp, deleted_at: null };
+    return save(() => setPlans((all) => [...all, row]), () => supabase!.from(MONEY_PLANS_TABLE).insert(row));
+  }, [plans, save]);
+
   return {
+    fixed, plan: currentPlan(plans), saveFixed, removeFixed, payFixed, setMonthlyBudget,
     accounts, categories, transactions, loading, error,
     addTransaction, updateTransaction, removeTransaction, linkTransfer, addTransfer, importTransactions,
     saveAccount, removeAccount, saveCategory, removeCategory, addStarterSet,
@@ -167,7 +213,7 @@ export function useMoney() {
 export type MoneyStore = ReturnType<typeof useMoney>;
 
 function friendly(message: string): string {
-  if (/relation .* does not exist|schema cache/i.test(message)) return "The money tables aren't in Supabase yet. Run the Phase 2 SQL file, then reload.";
+  if (/relation .* does not exist|schema cache|fixed_expense_id/i.test(message)) return "Some money tables aren't in Supabase yet. Run both Phase 2 SQL files (money, then plan), then reload.";
   if (/failed to fetch|network/i.test(message)) return "Couldn't reach the server. Check your connection and try again.";
   return message;
 }

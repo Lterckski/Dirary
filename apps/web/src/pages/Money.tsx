@@ -1,20 +1,22 @@
-import { useMemo, useState, type FormEvent, type ReactNode } from 'react';
+import { useEffect, useMemo, useState, type FormEvent, type ReactNode } from 'react';
 import {
   INSTITUTIONS, INSTITUTION_LABEL, LIST_COLORS, TransactionDraft, accountBalance, budgetCoach, dayLabel, findTransferPairs, formatPeso, guessMapping,
-  localDate, monthSummary, needsReview, parseAmount, parseCsv, parseMoneyQuickAdd, recentTransactions, rowsToTransactions, spentOn,
-  type Account, type Category, type CsvMapping, type Institution, type ListColor, type Transaction,
+  dueLabel, fixedThisMonth, localDate, monthSummary, needsReview, parseAmount, parseCsv, parseMoneyQuickAdd, recentTransactions, rowsToTransactions, safeToSpend, spendCoach,
+  type Account, type Category, type CsvMapping, type FixedExpense, type Institution, type ListColor, type Transaction,
 } from '@dirary/shared';
 import { Mascot } from '../Mascot';
 import { useMoney, type MoneyStore } from '../money/useMoney';
 import { Modal, openPicker } from '../ui';
 
+/** Who the app greets. Dirary is a one-person app. */
+const GREETING_NAME = 'Luther';
 const toLocal = (iso: string) => localDate(new Date(iso));
 const pad = (n: number) => String(n).padStart(2, '0');
 /** A Date as the value a datetime-local input expects. */
 const forInput = (d: Date) => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
 const timeOf = (iso: string) => new Date(iso).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' });
 
-type Dialog = { kind: 'tx'; tx: Transaction | null } | { kind: 'accounts' } | { kind: 'categories' } | { kind: 'transfer' } | { kind: 'import' } | null;
+type Dialog = { kind: 'tx'; tx: Transaction | null; categoryId?: string } | { kind: 'fixed' } | { kind: 'budget' } | { kind: 'accounts' } | { kind: 'categories' } | { kind: 'transfer' } | { kind: 'import' } | null;
 
 export function Money() {
   const store = useMoney();
@@ -26,14 +28,27 @@ export function Money() {
   const daysInMonth = new Date(now.getFullYear(), now.getMonth() + 1, 0).getDate();
 
   const summary = useMemo(() => monthSummary(transactions, categories, month, toLocal), [transactions, categories, month]);
-  const coach = budgetCoach(summary, now.getDate(), daysInMonth);
+  const fixedSummary = useMemo(() => fixedThisMonth(store.fixed, transactions, today, toLocal), [store.fixed, transactions, today]);
+  const safe = useMemo(() => safeToSpend(store.plan, store.fixed, transactions, today, toLocal), [store.plan, store.fixed, transactions, today]);
+  // Ink speaks about today's allowance first; a category over budget takes over when there is one.
+  const budgetLine = budgetCoach(summary, now.getDate(), daysInMonth);
+  const coach = budgetLine.mood === 'worried' && safe.safeToday >= 0 ? budgetLine : spendCoach(safe, fixedSummary, formatPeso);
+  const total = accounts.reduce((sum, a) => sum + accountBalance(a, transactions), 0);
+  const safePct = safe.dailyLimit === 0 ? (safe.spentToday > 0 ? 100 : 0) : Math.min(100, Math.round((safe.spentToday / safe.dailyLimit) * 100));
+  const shortcuts = categories.filter((c) => c.kind === 'expense').slice(0, 4);
+
+  // The floating + button asks the current screen to start adding.
+  useEffect(() => {
+    const open = () => setDialog({ kind: 'tx', tx: null });
+    window.addEventListener('dirary:add', open);
+    return () => window.removeEventListener('dirary:add', open);
+  }, []);
   const inbox = useMemo(() => needsReview(transactions), [transactions]);
   const pairs = useMemo(() => findTransferPairs(inbox), [inbox]);
   const paired = new Set(pairs.flatMap((p) => [p.out.id, p.into.id]));
   const recent = useMemo(() => recentTransactions(transactions, 60), [transactions]);
   const accountById = useMemo(() => new Map(accounts.map((a) => [a.id, a])), [accounts]);
   const categoryById = useMemo(() => new Map(categories.map((c) => [c.id, c])), [categories]);
-  const budgetPct = summary.budgeted === 0 ? 0 : Math.min(100, Math.round((summary.budgetSpent / summary.budgeted) * 100));
 
   const days: { date: string; rows: Transaction[] }[] = [];
   for (const t of recent) {
@@ -51,12 +66,13 @@ export function Money() {
 
   return (
     <div className="page">
-      <div className="page-head">
+      <header className="hero">
         <div>
-          <p className="eyebrow">{now.toLocaleDateString('en-US', { month: 'long', year: 'numeric' })}</p>
-          <h1 className="display">Money</h1>
+          <p className="hero-date">{now.toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' })}</p>
+          <h1 className="display">Hello, {GREETING_NAME}!</h1>
         </div>
-      </div>
+        <span className="hero-ink" aria-hidden="true"><Mascot mood={coach.mood} size={96} /></span>
+      </header>
 
       {error && <p className="note error" role="alert">{error}</p>}
       {loading && <p className="muted" role="status">Loading your money…</p>}
@@ -71,17 +87,27 @@ export function Money() {
 
       {!loading && !firstUse && (
         <>
-          <section className="card progress" aria-label="This month">
-            <div className="row" style={{ justifyContent: 'space-between', alignItems: 'baseline' }}>
-              <p className="display progress-count">{formatPeso(summary.spent)}<span> spent</span></p>
-              <p className="muted money-in">{formatPeso(summary.income, { sign: true })} in · {formatPeso(spentOn(transactions, today, toLocal))} today</p>
+          <section className="card safe" aria-labelledby="safe-title">
+            <div className="row" style={{ justifyContent: 'space-between' }}>
+              <h2 id="safe-title" className="card-label">Safe to spend today</h2>
+              <button type="button" className="round-btn" aria-label="Set monthly budget" onClick={() => setDialog({ kind: 'budget' })}>
+                <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 20h4L19 9l-4-4L4 16v4z" /></svg>
+              </button>
             </div>
-            {summary.budgeted > 0 && (
+            {safe.ready ? (
               <>
-                <div className={budgetPct >= 100 ? 'bar over' : 'bar'} role="progressbar" aria-valuemin={0} aria-valuemax={100} aria-valuenow={budgetPct} aria-label="Budget used this month">
-                  <div style={{ width: `${budgetPct}%` }} />
+                <p className={safe.safeToday < 0 ? 'display safe-amount late' : 'display safe-amount'}>{formatPeso(safe.safeToday)}</p>
+                <p className="muted">of {formatPeso(safe.dailyLimit)} daily limit</p>
+                <div className={safe.safeToday < 0 ? 'bar over' : 'bar'} role="progressbar" aria-valuemin={0} aria-valuemax={100} aria-valuenow={safePct} aria-label="Today's limit used">
+                  <div style={{ width: `${safePct}%` }} />
                 </div>
-                <p className="note muted">{formatPeso(summary.budgetSpent)} of {formatPeso(summary.budgeted)} budgeted</p>
+                <div className="row safe-foot"><strong>Today spent: {formatPeso(safe.spentToday)}</strong><span className="muted">{safe.daysLeft} day{safe.daysLeft === 1 ? '' : 's'} left · {formatPeso(safe.leftThisMonth)} for the month</span></div>
+              </>
+            ) : (
+              <>
+                <p className="display safe-amount">{formatPeso(safe.spentToday)}</p>
+                <p className="muted">spent today</p>
+                <button type="button" className="btn primary" style={{ alignSelf: 'flex-start' }} onClick={() => setDialog({ kind: 'budget' })}>Set a monthly budget</button>
               </>
             )}
             <div className="coach">
@@ -90,25 +116,69 @@ export function Money() {
             </div>
           </section>
 
-          <QuickAdd store={store} onMore={() => setDialog({ kind: 'tx', tx: null })} />
-
-          <section className="group" aria-labelledby="accounts-title">
-            <div className="group-bar" style={{ marginBottom: 0 }}>
-              <h2 id="accounts-title" className="group-title">Accounts</h2>
-              <div className="row" style={{ gap: 8 }}>
-                <button type="button" className="chip ghost" onClick={() => setDialog({ kind: 'transfer' })} disabled={accounts.length < 2}>Transfer</button>
-                <button type="button" className="chip ghost" onClick={() => setDialog({ kind: 'import' })} disabled={accounts.length === 0}>Import statement</button>
-                <button type="button" className="chip ghost" onClick={() => setDialog({ kind: 'accounts' })}>Edit accounts</button>
+          <section className="wallet" aria-labelledby="wallet-title">
+            <ul className="wallet-cards" aria-label="Accounts">
+              {accounts.map((a) => (
+                <li key={a.id} className={`wallet-card ${a.institution}`}>
+                  <span className="wallet-card-name">{a.name}</span>
+                  <span className="wallet-card-balance">{formatPeso(accountBalance(a, transactions))}</span>
+                </li>
+              ))}
+            </ul>
+            <div className="wallet-front">
+              <span className="wallet-ink" aria-hidden="true"><Mascot mood="happy" size={132} /></span>
+              <h2 id="wallet-title" className="card-label">Balance</h2>
+              <p className="display wallet-total">{formatPeso(total)}</p>
+              <div className="row wallet-actions">
+                <button type="button" className="chip" onClick={() => setDialog({ kind: 'transfer' })} disabled={accounts.length < 2}>Transfer</button>
+                <button type="button" className="chip" onClick={() => setDialog({ kind: 'accounts' })}>Edit accounts</button>
+                <button type="button" className="chip" onClick={() => setDialog({ kind: 'import' })} disabled={accounts.length === 0}>Import statement</button>
               </div>
             </div>
-            <div className="accounts">
-              {accounts.map((a) => (
-                <div key={a.id} className="account">
-                  <span className="task-meta">{a.name}</span>
-                  <span className="display account-balance">{formatPeso(accountBalance(a, transactions))}</span>
-                </div>
+          </section>
+
+          {shortcuts.length > 0 && (
+            <div className="tiles" role="group" aria-label="Quick add by category">
+              {shortcuts.map((c) => (
+                <button key={c.id} type="button" className="tile" onClick={() => setDialog({ kind: 'tx', tx: null, categoryId: c.id })}>
+                  <span className="tile-dot" style={{ background: `var(--${c.color})` }} aria-hidden="true">{c.name.charAt(0)}</span>
+                  <span className="tile-name">{c.name}</span>
+                </button>
               ))}
             </div>
+          )}
+
+          <QuickAdd store={store} onMore={() => setDialog({ kind: 'tx', tx: null })} />
+
+          <section className="card" aria-labelledby="fixed-title">
+            <div className="row" style={{ justifyContent: 'space-between' }}>
+              <h2 id="fixed-title" className="card-label">Fixed this month</h2>
+              <span className="row" style={{ gap: 8 }}>
+                {fixedSummary.items.length > 0 && <span className="muted note amount-note">{formatPeso(fixedSummary.paid)} of {formatPeso(fixedSummary.total)} paid</span>}
+                <button type="button" className="chip ghost" onClick={() => setDialog({ kind: 'fixed' })}>{fixedSummary.items.length > 0 ? 'Edit' : 'Add'}</button>
+              </span>
+            </div>
+            {fixedSummary.items.length === 0 ? (
+              <p className="muted">Add what you pay every month, like rent, internet or a subscription. Dirary sets that money aside before working out what's safe to spend.</p>
+            ) : (
+              <ul className="fixed-list">
+                {fixedSummary.items.map((i) => (
+                  <li key={i.expense.id} className={i.paid ? 'fixed done' : 'fixed'}>
+                    <button
+                      type="button" role="checkbox" aria-checked={i.paid} className={i.paid || i.dueIn > 3 ? 'check' : i.dueIn < 0 ? 'check p3' : 'check p2'}
+                      aria-label={`${i.expense.name}, ${formatPeso(i.expense.amount_centavos)}, mark ${i.paid ? 'not paid' : 'paid'}`}
+                      onClick={() => (i.payment ? store.removeTransaction(i.payment.id) : store.payFixed(i.expense, accounts[0]?.id ?? null))}>
+                      <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M3 8.5 6.5 12 13 4.5" /></svg>
+                    </button>
+                    <span className="grow fixed-main">
+                      <span className="task-title">{i.expense.name}</span>
+                      {!i.paid && <span className={i.dueIn < 0 ? 'task-meta late' : i.dueIn <= 3 ? 'task-meta soon' : 'task-meta'}>{dueLabel(i)}</span>}
+                    </span>
+                    <span className="amount">{formatPeso(i.expense.amount_centavos)}</span>
+                  </li>
+                ))}
+              </ul>
+            )}
           </section>
 
           {inbox.length > 0 && (
@@ -185,7 +255,9 @@ export function Money() {
         </>
       )}
 
-      {dialog?.kind === 'tx' && <TxDialog tx={dialog.tx} store={store} onClose={() => setDialog(null)} />}
+      {dialog?.kind === 'tx' && <TxDialog tx={dialog.tx} categoryId={dialog.categoryId} store={store} onClose={() => setDialog(null)} />}
+      {dialog?.kind === 'fixed' && <FixedDialog store={store} onClose={() => setDialog(null)} />}
+      {dialog?.kind === 'budget' && <BudgetDialog store={store} fixedTotal={fixedSummary.total} onClose={() => setDialog(null)} />}
       {dialog?.kind === 'accounts' && <AccountsDialog store={store} onClose={() => setDialog(null)} />}
       {dialog?.kind === 'categories' && <CategoriesDialog store={store} onClose={() => setDialog(null)} />}
       {dialog?.kind === 'transfer' && <TransferDialog store={store} onClose={() => setDialog(null)} />}
@@ -236,11 +308,11 @@ function QuickAdd({ store, onMore }: { store: MoneyStore; onMore: () => void }) 
   );
 }
 
-function TxDialog({ tx, store, onClose }: { tx: Transaction | null; store: MoneyStore; onClose: () => void }) {
+function TxDialog({ tx, categoryId: startCategory, store, onClose }: { tx: Transaction | null; categoryId?: string; store: MoneyStore; onClose: () => void }) {
   const [amount, setAmount] = useState(tx ? String(tx.amount_centavos / 100) : '');
   const [direction, setDirection] = useState<'in' | 'out'>(tx?.direction ?? 'out');
   const [accountId, setAccountId] = useState(tx?.account_id ?? store.accounts[0]?.id ?? '');
-  const [categoryId, setCategoryId] = useState(tx?.category_id ?? '');
+  const [categoryId, setCategoryId] = useState(tx?.category_id ?? startCategory ?? '');
   const [merchant, setMerchant] = useState(tx?.merchant ?? '');
   const [note, setNote] = useState(tx?.note ?? '');
   const [when, setWhen] = useState(forInput(tx ? new Date(tx.occurred_at) : new Date()));
@@ -524,6 +596,96 @@ function ImportDialog({ store, onClose }: { store: MoneyStore; onClose: () => vo
         {result && <p className="note ok" role="status">{result}</p>}
         <div className="actions"><span className="grow" /><button type="button" className="btn" onClick={onClose}>Close</button><button type="button" className="btn primary" disabled={!preview || preview.ok.length === 0 || !accountId} onClick={run}>Import</button></div>
       </div>
+    </Modal>
+  );
+}
+
+function BudgetDialog({ store, fixedTotal, onClose }: { store: MoneyStore; fixedTotal: number; onClose: () => void }) {
+  const [amount, setAmount] = useState(store.plan?.monthly_budget_centavos ? String(store.plan.monthly_budget_centavos / 100) : '');
+  const [problem, setProblem] = useState<string | null>(null);
+  const centavos = parseAmount(amount);
+  function submit(event: FormEvent) {
+    event.preventDefault();
+    if (amount.trim() === '') { store.setMonthlyBudget(null); return onClose(); }
+    if (!centavos) return setProblem('Enter an amount, like 15000.');
+    store.setMonthlyBudget(centavos);
+    onClose();
+  }
+  return (
+    <Modal title="Monthly budget" onClose={onClose}>
+      <form className="form" onSubmit={submit}>
+        <p className="note muted">How much you allow yourself to spend in a month, fixed expenses included. Dirary sets your fixed expenses aside, subtracts what you've spent, and spreads the rest over the days left. That's your daily limit.</p>
+        <label className="field">Monthly budget (₱)
+          <input className="input" inputMode="decimal" value={amount} placeholder="15000" onChange={(e) => setAmount(e.target.value)} autoFocus />
+        </label>
+        {centavos !== null && fixedTotal > 0 && <p className="note muted">{formatPeso(fixedTotal)} of it is fixed expenses, leaving {formatPeso(centavos - fixedTotal)} for everyday spending.</p>}
+        {problem && <p className="note error" role="alert">{problem}</p>}
+        <div className="actions"><span className="grow" /><button type="button" className="btn" onClick={onClose}>Cancel</button><button type="submit" className="btn primary">Save</button></div>
+      </form>
+    </Modal>
+  );
+}
+
+function FixedDialog({ store, onClose }: { store: MoneyStore; onClose: () => void }) {
+  const [name, setName] = useState('');
+  const [amount, setAmount] = useState('');
+  const [dueDay, setDueDay] = useState('1');
+  const [categoryId, setCategoryId] = useState('');
+  const [accountId, setAccountId] = useState('');
+  const [problem, setProblem] = useState<string | null>(null);
+  const expenseCategories = store.categories.filter((c) => c.kind === 'expense');
+
+  function add(event: FormEvent) {
+    event.preventDefault();
+    const centavos = parseAmount(amount);
+    const day = Number(dueDay);
+    if (!name.trim()) return setProblem('Give it a name, like Rent.');
+    if (!centavos) return setProblem('Enter an amount, like 3500.');
+    if (!Number.isInteger(day) || day < 1 || day > 31) return setProblem('The due day is a day of the month, 1 to 31.');
+    store.saveFixed({ name: name.trim(), amount_centavos: centavos, due_day: day, category_id: categoryId || null, account_id: accountId || null });
+    setName(''); setAmount(''); setProblem(null);
+  }
+  const patch = (e: FixedExpense, change: Partial<FixedExpense>) => store.saveFixed({ ...e, ...change });
+
+  return (
+    <Modal title="Fixed expenses" onClose={onClose}>
+      <p className="note muted">What you pay every month. Tick one off on the Money screen when it's paid; that logs the payment.</p>
+      <ul className="list-rows">
+        {store.fixed.map((e) => (
+          <li key={e.id} className="fixed-edit">
+            <input className="input grow" defaultValue={e.name} maxLength={60} aria-label={`Name of ${e.name}`}
+              onBlur={(ev) => { const next = ev.target.value.trim(); if (next && next !== e.name) patch(e, { name: next }); else ev.target.value = e.name; }} />
+            <input className="input narrow" inputMode="decimal" defaultValue={String(e.amount_centavos / 100)} aria-label={`Amount of ${e.name}`}
+              onBlur={(ev) => { const next = parseAmount(ev.target.value); if (next && next !== e.amount_centavos) patch(e, { amount_centavos: next }); else ev.target.value = String(e.amount_centavos / 100); }} />
+            <input className="input tiny" inputMode="numeric" defaultValue={String(e.due_day)} aria-label={`Due day of ${e.name}`}
+              onBlur={(ev) => { const next = Number(ev.target.value); if (Number.isInteger(next) && next >= 1 && next <= 31 && next !== e.due_day) patch(e, { due_day: next }); else ev.target.value = String(e.due_day); }} />
+            <button type="button" className="btn danger" onClick={() => store.removeFixed(e.id)} aria-label={`Delete ${e.name}`}>Delete</button>
+          </li>
+        ))}
+      </ul>
+      <form className="form" onSubmit={add}>
+        <div className="two">
+          <label className="field">Name<input className="input" value={name} maxLength={60} placeholder="Rent" onChange={(e) => setName(e.target.value)} /></label>
+          <label className="field">Amount (₱)<input className="input" inputMode="decimal" value={amount} placeholder="3500" onChange={(e) => setAmount(e.target.value)} /></label>
+        </div>
+        <div className="two">
+          <label className="field">Due day of the month<input className="input" inputMode="numeric" value={dueDay} onChange={(e) => setDueDay(e.target.value)} /></label>
+          <label className="field">Category
+            <select className="input" value={categoryId} onChange={(e) => setCategoryId(e.target.value)}>
+              <option value="">None</option>
+              {expenseCategories.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
+            </select>
+          </label>
+        </div>
+        <label className="field">Paid from
+          <select className="input" value={accountId} onChange={(e) => setAccountId(e.target.value)}>
+            <option value="">First account</option>
+            {store.accounts.map((a) => <option key={a.id} value={a.id}>{a.name}</option>)}
+          </select>
+        </label>
+        {problem && <p className="note error" role="alert">{problem}</p>}
+        <div className="actions"><span className="grow" /><button type="button" className="btn" onClick={onClose}>Done</button><button type="submit" className="btn primary">Add</button></div>
+      </form>
     </Modal>
   );
 }

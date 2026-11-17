@@ -29,9 +29,13 @@ export function Button({ label, onPress, primary, disabled }: { label: string; o
   );
 }
 
+/** Room a scrolling screen leaves at the bottom for the floating tab bar and its + button. */
+export const TAB_BAR_CLEARANCE = 140;
+
 export const styles = StyleSheet.create({
   screen: { flex: 1, backgroundColor: colors.night },
-  content: { padding: space[5], gap: space[5], paddingBottom: space[10] },
+  // The bottom padding keeps the last row clear of the floating tab bar.
+  content: { padding: space[5], gap: space[5], paddingBottom: TAB_BAR_CLEARANCE },
   card: { backgroundColor: colors.surface, borderColor: colors.line, borderWidth: 1, borderRadius: radius.xl, padding: space[5], gap: space[3] },
   button: { minHeight: 48, paddingHorizontal: space[6], borderRadius: radius.pill, borderWidth: 1, borderColor: colors.line, backgroundColor: colors.raised, alignItems: 'center', justifyContent: 'center' },
   primary: { backgroundColor: colors.inkBlue, borderColor: colors.inkBlue },

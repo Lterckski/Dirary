@@ -15,6 +15,7 @@ import { ListsEditor, TaskEditor } from '@/components/task-editor';
 import { Button, Card, Text, styles } from '@/components/ui';
 import { requestReminderPermission } from '@/lib/reminders';
 import { addList, addTask, removeList, removeTask, renameList, toggleTask, updateTask, useTasksStore } from '@/lib/tasks-store';
+import { useAddRequest } from '@/lib/add-bus';
 
 type View_ = 'today' | 'upcoming' | 'inbox' | 'done' | string; // any other string is a list id
 const FIXED_VIEWS = ['today', 'upcoming', 'inbox', 'done'];
@@ -49,6 +50,11 @@ export default function TasksScreen() {
     const timer = setInterval(() => setTick((n) => n + 1), 60_000);
     return () => clearInterval(timer);
   }, []);
+  // The floating + button: show the box if the Done tab hid it, then put the cursor there.
+  useAddRequest('tasks', () => {
+    setView((v) => (v === 'done' ? 'today' : v));
+    setTimeout(() => input.current?.focus(), 300);
+  });
   // The widget's + button opens the app with ?add=1: put the cursor in the box.
   useEffect(() => {
     if (params.add) setTimeout(() => input.current?.focus(), 300);

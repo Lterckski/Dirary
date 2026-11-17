@@ -3,13 +3,13 @@ import { Pressable, TextInput, View } from 'react-native';
 import { colors, space } from '@dirary/ui';
 import {
   INSTITUTIONS, INSTITUTION_LABEL, LIST_COLORS, TransactionDraft, formatPeso, parseAmount,
-  type Account, type Category, type Institution, type ListColor, type Transaction,
+  type Account, type Category, type FixedExpense, type Institution, type ListColor, type MoneyPlan, type Transaction,
 } from '@dirary/shared';
 
 import { Chip } from '@/components/task-bits';
 import { Field, Sheet, Wrap } from '@/components/task-editor';
 import { Button, Text, styles } from '@/components/ui';
-import { addTransaction, addTransfer, removeAccount, removeCategory, removeTransaction, saveAccount, saveCategory, updateTransaction } from '@/lib/money-store';
+import { addTransaction, addTransfer, removeAccount, removeCategory, removeFixed, removeTransaction, saveAccount, saveCategory, saveFixed, setMonthlyBudget, updateTransaction } from '@/lib/money-store';
 
 const Problem = ({ text }: { text: string | null }) => (text ? <Text variant="label" style={{ color: colors.red }} accessibilityRole="alert">{text}</Text> : null);
 const Danger = ({ label, onPress }: { label: string; onPress: () => void }) => (
@@ -19,11 +19,11 @@ const Danger = ({ label, onPress }: { label: string; onPress: () => void }) => (
 );
 const money = { ...styles.input, fontVariant: ['tabular-nums' as const] };
 
-export function TransactionEditor({ tx, accounts, categories, onClose }: { tx: Transaction | null; accounts: Account[]; categories: Category[]; onClose: () => void }) {
+export function TransactionEditor({ tx, categoryId: startCategory, accounts, categories, onClose }: { tx: Transaction | null; categoryId?: string; accounts: Account[]; categories: Category[]; onClose: () => void }) {
   const [amount, setAmount] = useState(tx ? String(tx.amount_centavos / 100) : '');
   const [direction, setDirection] = useState<'in' | 'out'>(tx?.direction ?? 'out');
   const [accountId, setAccountId] = useState<string | null>(tx?.account_id ?? accounts[0]?.id ?? null);
-  const [categoryId, setCategoryId] = useState<string | null>(tx?.category_id ?? null);
+  const [categoryId, setCategoryId] = useState<string | null>(tx?.category_id ?? startCategory ?? null);
   const [merchant, setMerchant] = useState(tx?.merchant ?? '');
   const [note, setNote] = useState(tx?.note ?? '');
   const [problem, setProblem] = useState<string | null>(null);
@@ -199,6 +199,103 @@ export function CategoriesEditor({ categories, onClose }: { categories: Category
         <Wrap>{LIST_COLORS.map((c) => <Chip key={c} label={COLOR_NAMES[c]} dot={c} active={color === c} onPress={() => setColor(c)} />)}</Wrap>
       </Field>
       <Button primary label="Add category" disabled={!name.trim()} onPress={add} />
+    </Sheet>
+  );
+}
+
+export function BudgetEditor({ plan, fixedTotal, onClose }: { plan: MoneyPlan | null; fixedTotal: number; onClose: () => void }) {
+  const [amount, setAmount] = useState(plan?.monthly_budget_centavos ? String(plan.monthly_budget_centavos / 100) : '');
+  const [problem, setProblem] = useState<string | null>(null);
+  const centavos = parseAmount(amount);
+  async function save() {
+    if (amount.trim() === '') { onClose(); return setMonthlyBudget(null); }
+    if (!centavos) return setProblem('Enter an amount, like 15000.');
+    onClose();
+    await setMonthlyBudget(centavos);
+  }
+  return (
+    <Sheet title="Monthly budget" onClose={onClose}>
+      <Text variant="label" muted>How much you allow yourself to spend in a month, fixed expenses included. Dirary sets your fixed expenses aside, subtracts what you've spent, and spreads the rest over the days left. That's your daily limit.</Text>
+      <Field label="Monthly budget (₱)">
+        <TextInput accessibilityLabel="Monthly budget in pesos" style={money} keyboardType="decimal-pad" value={amount} onChangeText={setAmount} placeholder="15000" placeholderTextColor={colors.faint} autoFocus />
+      </Field>
+      {centavos !== null && fixedTotal > 0 && <Text variant="label" muted>{formatPeso(fixedTotal)} of it is fixed expenses, leaving {formatPeso(centavos - fixedTotal)} for everyday spending.</Text>}
+      <Problem text={problem} />
+      <Button primary label="Save" onPress={save} />
+    </Sheet>
+  );
+}
+
+export function FixedEditor({ fixed, accounts, categories, onClose }: { fixed: FixedExpense[]; accounts: Account[]; categories: Category[]; onClose: () => void }) {
+  const [editing, setEditing] = useState<FixedExpense | null>(null);
+  const [name, setName] = useState('');
+  const [amount, setAmount] = useState('');
+  const [dueDay, setDueDay] = useState('1');
+  const [categoryId, setCategoryId] = useState<string | null>(null);
+  const [accountId, setAccountId] = useState<string | null>(null);
+  const [problem, setProblem] = useState<string | null>(null);
+  const options = categories.filter((c) => c.kind === 'expense');
+
+  function start(expense: FixedExpense | null) {
+    setEditing(expense);
+    setName(expense?.name ?? '');
+    setAmount(expense ? String(expense.amount_centavos / 100) : '');
+    setDueDay(String(expense?.due_day ?? 1));
+    setCategoryId(expense?.category_id ?? null);
+    setAccountId(expense?.account_id ?? null);
+    setProblem(null);
+  }
+  async function save() {
+    const centavos = parseAmount(amount);
+    const day = Number(dueDay);
+    if (!name.trim()) return setProblem('Give it a name, like Rent.');
+    if (!centavos) return setProblem('Enter an amount, like 3500.');
+    if (!Number.isInteger(day) || day < 1 || day > 31) return setProblem('The due day is a day of the month, 1 to 31.');
+    const fields = { name: name.trim().slice(0, 60), amount_centavos: centavos, due_day: day, category_id: categoryId, account_id: accountId };
+    const target = editing;
+    start(null);
+    await saveFixed(target ? { ...target, ...fields } : { ...fields, sort_order: fixed.length });
+  }
+
+  return (
+    <Sheet title="Fixed expenses" onClose={onClose}>
+      <Text variant="label" muted>What you pay every month. Tick one off on the Money screen when it's paid; that logs the payment. Tap one here to change it.</Text>
+      {fixed.map((e) => (
+        <View key={e.id} style={{ flexDirection: 'row', alignItems: 'center', gap: space[2], paddingLeft: space[4], borderRadius: 20, borderWidth: 1, borderColor: editing?.id === e.id ? colors.inkBlue : colors.line, backgroundColor: colors.surface }}>
+          <Pressable accessibilityRole="button" accessibilityLabel={`Edit ${e.name}`} onPress={() => start(e)} style={{ flex: 1, minHeight: 56, justifyContent: 'center', gap: 2 }}>
+            <Text weight="semi">{e.name}</Text>
+            <Text variant="label" muted style={{ fontVariant: ['tabular-nums'] }}>{formatPeso(e.amount_centavos)} · day {e.due_day}</Text>
+          </Pressable>
+          <Danger label="Delete" onPress={() => { if (editing?.id === e.id) start(null); removeFixed(e); }} />
+        </View>
+      ))}
+      <Text variant="heading">{editing ? `Change ${editing.name}` : 'Add one'}</Text>
+      <Field label="Name">
+        <TextInput accessibilityLabel="Name" style={styles.input} value={name} maxLength={60} onChangeText={setName} placeholder="Rent" placeholderTextColor={colors.faint} />
+      </Field>
+      <Field label="Amount (₱)">
+        <TextInput accessibilityLabel="Amount in pesos" style={money} keyboardType="decimal-pad" value={amount} onChangeText={setAmount} placeholder="3500" placeholderTextColor={colors.faint} />
+      </Field>
+      <Field label="Due day of the month">
+        <TextInput accessibilityLabel="Due day of the month" style={money} keyboardType="number-pad" value={dueDay} maxLength={2} onChangeText={setDueDay} />
+      </Field>
+      <Field label="Category">
+        <Wrap>
+          <Chip label="None" active={categoryId === null} onPress={() => setCategoryId(null)} />
+          {options.map((c) => <Chip key={c.id} label={c.name} dot={c.color} active={categoryId === c.id} onPress={() => setCategoryId(c.id)} />)}
+        </Wrap>
+      </Field>
+      <Field label="Paid from">
+        <Wrap>
+          <Chip label="First account" active={accountId === null} onPress={() => setAccountId(null)} />
+          {accounts.map((a) => <Chip key={a.id} label={a.name} active={accountId === a.id} onPress={() => setAccountId(a.id)} />)}
+        </Wrap>
+      </Field>
+      <Problem text={problem} />
+      <View style={styles.row}>
+        <Button primary label={editing ? 'Save' : 'Add'} onPress={save} />
+        {editing && <Button label="Cancel" onPress={() => start(null)} />}
+      </View>
     </Sheet>
   );
 }

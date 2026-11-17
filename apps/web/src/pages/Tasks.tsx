@@ -22,6 +22,13 @@ export function Tasks() {
   const [grouping, setGrouping] = useGrouping();
   const today = useToday();
 
+  // The floating + button puts the cursor in the quick-add box.
+  useEffect(() => {
+    const focus = () => { setView((v) => (v === 'done' ? 'today' : v)); window.setTimeout(() => document.getElementById('quick-title')?.focus(), 30); };
+    window.addEventListener('dirary:add', focus);
+    return () => window.removeEventListener('dirary:add', focus);
+  }, []);
+
   const listIds = useMemo(() => new Set(lists.map((l) => l.id)), [lists]);
   const listById = useMemo(() => new Map(lists.map((l) => [l.id, l])), [lists]);
   const activeList = listById.get(view);

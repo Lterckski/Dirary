@@ -44,6 +44,8 @@ export const Transaction = z.object({
   status: z.enum(['needs_review', 'confirmed']),
   fingerprint: z.string().nullable(),
   transfer_group_id: z.uuid().nullable(),
+  /** Set on the payment of a fixed monthly expense. */
+  fixed_expense_id: z.uuid().nullable(),
   ...stamps,
 });
 export type Transaction = z.infer<typeof Transaction>;
@@ -60,7 +62,7 @@ export const TRANSACTIONS_TABLE = 'transactions';
 export const ACCOUNT_COLUMNS = 'id, name, institution, opening_balance_centavos, sort_order, created_at, updated_at, deleted_at';
 export const CATEGORY_COLUMNS = 'id, name, kind, color, monthly_limit_centavos, sort_order, created_at, updated_at, deleted_at';
 export const TRANSACTION_COLUMNS =
-  'id, account_id, category_id, amount_centavos, direction, merchant, note, occurred_at, source, status, fingerprint, transfer_group_id, created_at, updated_at, deleted_at';
+  'id, account_id, category_id, amount_centavos, direction, merchant, note, occurred_at, source, status, fingerprint, transfer_group_id, fixed_expense_id, created_at, updated_at, deleted_at';
 
 /** Starter set, offered with one tap on first use. */
 export const STARTER_ACCOUNTS: { name: string; institution: Institution }[] = [

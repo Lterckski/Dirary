@@ -11,7 +11,7 @@ const cat = (id: string, name: string, limit: number | null = null, kind: Catego
 let n = 0;
 const tx = (p: Partial<Transaction>): Transaction => ({
   id: `t${n++}`, account_id: 'gcash', category_id: null, amount_centavos: 10000, direction: 'out', merchant: null, note: null,
-  occurred_at: '2026-11-17T04:00:00Z', source: 'manual', status: 'confirmed', fingerprint: null, transfer_group_id: null, ...stamps, ...p,
+  occurred_at: '2026-11-17T04:00:00Z', source: 'manual', status: 'confirmed', fingerprint: null, transfer_group_id: null, fixed_expense_id: null, ...stamps, ...p,
 });
 const day = (iso: string) => iso.slice(0, 10);
 const accounts = [acct('gcash', 'GCash', 'gcash', 50000), acct('gotyme', 'GoTyme', 'gotyme'), acct('cash', 'Cash', 'cash')];
