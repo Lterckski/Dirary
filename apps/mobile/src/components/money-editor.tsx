@@ -19,10 +19,29 @@ const Danger = ({ label, onPress }: { label: string; onPress: () => void }) => (
 );
 const money = { ...styles.input, fontVariant: ['tabular-nums' as const] };
 
-export function TransactionEditor({ tx, categoryId: startCategory, accounts, categories, onClose }: { tx: Transaction | null; categoryId?: string; accounts: Account[]; categories: Category[]; onClose: () => void }) {
+/** A row of equal-width options with one selected, like Spent / Received. */
+export function Segmented<T extends string>({ label, options, value, onChange }: { label: string; options: { value: T; label: string }[]; value: T | null; onChange: (value: T) => void }) {
+  return (
+    <View accessibilityRole="radiogroup" accessibilityLabel={label} style={{ flexDirection: 'row', padding: 3, gap: 2, borderRadius: 999, borderWidth: 1, borderColor: colors.line, backgroundColor: colors.surface }}>
+      {options.map((o) => {
+        const on = o.value === value;
+        return (
+          <Pressable key={o.value} accessibilityRole="radio" accessibilityState={{ selected: on }} onPress={() => onChange(o.value)}
+            style={{ flex: 1, minHeight: 44, borderRadius: 999, alignItems: 'center', justifyContent: 'center', backgroundColor: on ? colors.inkBlue : 'transparent' }}>
+            <Text weight={on ? 'bold' : 'semi'} style={{ color: on ? colors.onInkBlue : colors.muted }}>{o.label}</Text>
+          </Pressable>
+        );
+      })}
+    </View>
+  );
+}
+
+export function TransactionEditor({ tx, categoryId: startCategory, direction: startDirection, accountId: startAccount, accounts, categories, onTransfer, onClose }: {
+  tx: Transaction | null; categoryId?: string; direction?: 'in' | 'out'; accountId?: string; accounts: Account[]; categories: Category[]; onTransfer?: () => void; onClose: () => void;
+}) {
   const [amount, setAmount] = useState(tx ? String(tx.amount_centavos / 100) : '');
-  const [direction, setDirection] = useState<'in' | 'out'>(tx?.direction ?? 'out');
-  const [accountId, setAccountId] = useState<string | null>(tx?.account_id ?? accounts[0]?.id ?? null);
+  const [direction, setDirection] = useState<'in' | 'out'>(tx?.direction ?? startDirection ?? 'out');
+  const [accountId, setAccountId] = useState<string | null>(tx?.account_id ?? startAccount ?? accounts[0]?.id ?? null);
   const [categoryId, setCategoryId] = useState<string | null>(tx?.category_id ?? startCategory ?? null);
   const [merchant, setMerchant] = useState(tx?.merchant ?? '');
   const [note, setNote] = useState(tx?.note ?? '');
@@ -46,19 +65,22 @@ export function TransactionEditor({ tx, categoryId: startCategory, accounts, cat
   }
 
   return (
-    <Sheet title={tx ? (reviewing ? 'Review' : 'Edit transaction') : 'Add transaction'} onClose={onClose}>
+    <Sheet title={tx ? (reviewing ? 'Review' : 'Edit transaction') : direction === 'in' ? 'Add money in' : 'Add expense'} onClose={onClose}>
       {isTransfer && <Text variant="label" muted>One half of a transfer between your accounts. It doesn't count as spending or income.</Text>}
       {reviewing && <Text variant="label" muted>Logged from a notification. Check the amount, account and category, then confirm.</Text>}
+      {!isTransfer && (
+        <Segmented
+          label="What kind of transaction"
+          value={direction}
+          options={[{ value: 'out', label: 'Spent' }, { value: 'in', label: 'Received' }, ...(!tx && onTransfer ? [{ value: 'transfer' as const, label: 'Transfer' }] : [])]}
+          onChange={(v) => (v === 'transfer' ? onTransfer?.() : setDirection(v))}
+        />
+      )}
+      {direction === 'in' && !tx && <Text variant="label" muted>Money that came into one of your accounts, like allowance, pay or a refund. It raises that account's balance.</Text>}
       <Field label="Amount (₱)">
-        <TextInput accessibilityLabel="Amount in pesos" style={money} keyboardType="decimal-pad" value={amount} onChangeText={setAmount} placeholder="250" placeholderTextColor={colors.faint} autoFocus={!tx} />
+        <TextInput accessibilityLabel="Amount in pesos" style={money} keyboardType="decimal-pad" value={amount} onChangeText={setAmount} placeholder={direction === 'in' ? '5000' : '250'} placeholderTextColor={colors.faint} autoFocus={!tx} />
       </Field>
-      <Field label="Type">
-        <Wrap>
-          <Chip label="Money out" active={direction === 'out'} onPress={() => setDirection('out')} />
-          <Chip label="Money in" active={direction === 'in'} onPress={() => setDirection('in')} />
-        </Wrap>
-      </Field>
-      <Field label="Account">
+      <Field label={direction === 'in' ? 'Into' : 'Paid from'}>
         <Wrap>{accounts.map((a) => <Chip key={a.id} label={a.name} active={accountId === a.id} onPress={() => setAccountId(a.id)} />)}</Wrap>
       </Field>
       {!isTransfer && (
@@ -76,7 +98,7 @@ export function TransactionEditor({ tx, categoryId: startCategory, accounts, cat
         <TextInput accessibilityLabel="Note" style={styles.input} value={note} maxLength={500} onChangeText={setNote} />
       </Field>
       <Problem text={problem} />
-      <Button primary label={reviewing ? 'Confirm' : 'Save'} onPress={save} />
+      <Button primary label={reviewing ? 'Confirm' : tx ? 'Save' : direction === 'in' ? 'Add money in' : 'Add expense'} onPress={save} />
       {tx && <Danger label="Delete transaction" onPress={() => { onClose(); removeTransaction(tx); }} />}
     </Sheet>
   );

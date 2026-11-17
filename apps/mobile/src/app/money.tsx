@@ -9,7 +9,7 @@ import {
 } from '@dirary/shared';
 
 import { Mascot } from '@/components/mascot';
-import { AccountsEditor, BudgetEditor, CategoriesEditor, FixedEditor, TransactionEditor, TransferEditor, TxRow } from '@/components/money-editor';
+import { AccountsEditor, BudgetEditor, CategoriesEditor, FixedEditor, Segmented, TransactionEditor, TransferEditor, TxRow } from '@/components/money-editor';
 import { Chip, Group } from '@/components/task-bits';
 import { Button, Card, TAB_BAR_CLEARANCE, Text, styles } from '@/components/ui';
 import { useAddRequest } from '@/lib/add-bus';
@@ -25,13 +25,14 @@ const CARD_COLOR: Record<Institution, string> = { securitybank: colors.amber, go
 const LABEL = { letterSpacing: 1.4, color: colors.muted } as const;
 const NUM = { fontVariant: ['tabular-nums' as const] };
 
-type Sheet = { kind: 'tx'; tx: Transaction | null; categoryId?: string } | { kind: 'fixed' } | { kind: 'budget' } | { kind: 'accounts' } | { kind: 'categories' } | { kind: 'transfer' } | null;
+type Sheet = { kind: 'tx'; tx: Transaction | null; categoryId?: string; direction?: 'in' | 'out'; accountId?: string } | { kind: 'fixed' } | { kind: 'budget' } | { kind: 'accounts' } | { kind: 'categories' } | { kind: 'transfer' } | null;
 
 export default function MoneyScreen() {
   const { accounts, categories, transactions, fixed, plan, loading } = useMoneyStore();
   const insets = useSafeAreaInsets();
   const [sheet, setSheet] = useState<Sheet>(null);
   const [text, setText] = useState('');
+  const [mode, setMode] = useState<'in' | 'out'>('out');
   const today = localDate();
   const now = new Date();
   const daysInMonth = new Date(now.getFullYear(), now.getMonth() + 1, 0).getDate();
@@ -57,7 +58,13 @@ export default function MoneyScreen() {
   const accountById = useMemo(() => new Map(accounts.map((a) => [a.id, a])), [accounts]);
   const categoryById = useMemo(() => new Map(categories.map((c) => [c.id, c])), [categories]);
 
-  const read = parseMoneyQuickAdd(text, categories, accounts);
+  const read = parseMoneyQuickAdd(text, categories, accounts, mode);
+  const incoming = read.direction === 'in';
+  function pickMode(next: 'in' | 'out') {
+    setMode(next);
+    // A typed + means money in; switching to Spent takes it out so the switch and the text agree.
+    if (next === 'out') setText((t) => t.replace(/(^|\s)\+(?=\s*(?:₱|php)?\s*\d)/i, '$1'));
+  }
   const account = accounts.find((a) => a.id === read.account_id) ?? accounts[0];
   async function add() {
     if (!read.amount_centavos || !account) return;
@@ -140,11 +147,12 @@ export default function MoneyScreen() {
         <View>
           <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 6, paddingHorizontal: 14, paddingTop: 8, flexGrow: 1 }}>
             {accounts.map((a, i) => (
-              <View key={a.id} accessible accessibilityLabel={`${a.name}, ${formatPeso(accountBalance(a, transactions))}`}
-                style={{ flexGrow: 1, minWidth: 112, marginTop: i % 2 ? 8 : 0, paddingTop: space[3], paddingHorizontal: 14, paddingBottom: 40, borderTopLeftRadius: 16, borderTopRightRadius: 16, backgroundColor: CARD_COLOR[a.institution], gap: 2 }}>
+              <Pressable key={a.id} accessibilityRole="button" accessibilityLabel={`${a.name}, ${formatPeso(accountBalance(a, transactions))}. Add money to ${a.name}`}
+                onPress={() => setSheet({ kind: 'tx', tx: null, direction: 'in', accountId: a.id })}
+                style={({ pressed }) => ({ opacity: pressed ? 0.85 : 1, flexGrow: 1, minWidth: 112, marginTop: i % 2 ? 8 : 0, paddingTop: space[3], paddingHorizontal: 14, paddingBottom: 40, borderTopLeftRadius: 16, borderTopRightRadius: 16, backgroundColor: CARD_COLOR[a.institution], gap: 2 })}>
                 <Text variant="small" weight="bold" numberOfLines={1} style={{ color: colors.onInkBlue }}>{a.name}</Text>
                 <Text variant="label" weight="bold" numberOfLines={1} style={[NUM, { color: colors.onInkBlue }]}>{formatPeso(accountBalance(a, transactions))}</Text>
-              </View>
+              </Pressable>
             ))}
           </ScrollView>
           <View style={{ marginTop: -28, padding: space[6], borderRadius: 28, borderWidth: 1, borderColor: colors.line, backgroundColor: colors.raised, overflow: 'hidden', gap: 6 }}>
@@ -155,8 +163,12 @@ export default function MoneyScreen() {
             <Text variant="small" weight="bold" style={LABEL}>BALANCE</Text>
             <Text variant="title" style={NUM} adjustsFontSizeToFit numberOfLines={1}>{formatPeso(total)}</Text>
             <View style={[styles.row, { flexWrap: 'wrap', gap: space[2], marginTop: space[2] }]}>
+              <Pressable accessibilityRole="button" onPress={() => setSheet({ kind: 'tx', tx: null, direction: 'in' })}
+                style={{ minHeight: 44, paddingHorizontal: space[4], borderRadius: 22, backgroundColor: colors.inkBlue, justifyContent: 'center' }}>
+                <Text variant="label" weight="bold" style={{ color: colors.onInkBlue }}>+ Add money</Text>
+              </Pressable>
               {accounts.length > 1 && <Chip label="Transfer" onPress={() => setSheet({ kind: 'transfer' })} />}
-              <Chip label="Edit accounts" onPress={() => setSheet({ kind: 'accounts' })} />
+              <Chip label="Accounts" onPress={() => setSheet({ kind: 'accounts' })} />
             </View>
           </View>
         </View>
@@ -176,14 +188,15 @@ export default function MoneyScreen() {
         )}
 
         <View style={{ gap: space[2] }}>
+          <Segmented label="Money out or in" value={incoming ? 'in' : 'out'} options={[{ value: 'out', label: 'Spent' }, { value: 'in', label: 'Received' }]} onChange={pickMode} />
           <View style={styles.row}>
-            <TextInput accessibilityLabel="New transaction" style={[styles.input, { flex: 1 }]} value={text} maxLength={160} placeholder="250 jollibee #food @gcash" placeholderTextColor={colors.faint} onChangeText={setText} onSubmitEditing={add} returnKeyType="done" />
+            <TextInput accessibilityLabel={incoming ? 'New money in' : 'New spending'} style={[styles.input, { flex: 1 }]} value={text} maxLength={160} placeholder={incoming ? '5000 allowance @gotyme' : '250 jollibee #food @gcash'} placeholderTextColor={colors.faint} onChangeText={setText} onSubmitEditing={add} returnKeyType="done" />
             <Button primary label="Add" disabled={!read.amount_centavos || !account} onPress={add} />
           </View>
           <Text variant="label" style={{ color: colors.faint, paddingLeft: 4 }}>
             {read.amount_centavos && account
-              ? <>Adds <Text variant="label" weight="semi" style={{ color: colors.inkBlue }}>{formatPeso(read.direction === 'in' ? read.amount_centavos : -read.amount_centavos, { sign: true })}</Text>{read.merchant ? ` · ${read.merchant}` : ''} · {categoryById.get(read.category_id ?? '')?.name ?? 'no category'} · {account.name}</>
-              : 'Amount, what it was, #category and @account. Start with + for money in.'}
+              ? <>{incoming ? 'Adds' : 'Takes'} <Text variant="label" weight="semi" style={{ color: incoming ? colors.inkBlue : colors.text }}>{formatPeso(incoming ? read.amount_centavos : -read.amount_centavos, { sign: true })}</Text> {incoming ? 'to' : 'from'} {account.name}{read.merchant ? ` · ${read.merchant}` : ''} · {categoryById.get(read.category_id ?? '')?.name ?? 'no category'}</>
+              : incoming ? 'Amount and where it came from, then @account. Example: 5000 allowance @gotyme.' : 'Amount, what it was, #category and @account.'}
           </Text>
         </View>
 
@@ -292,7 +305,7 @@ export default function MoneyScreen() {
 
       {sheet?.kind === 'fixed' && <FixedEditor fixed={fixed} accounts={accounts} categories={categories} onClose={() => setSheet(null)} />}
       {sheet?.kind === 'budget' && <BudgetEditor plan={plan} fixedTotal={fixedSummary.total} onClose={() => setSheet(null)} />}
-      {sheet?.kind === 'tx' && <TransactionEditor tx={sheet.tx} categoryId={sheet.categoryId} accounts={accounts} categories={categories} onClose={() => setSheet(null)} />}
+      {sheet?.kind === 'tx' && <TransactionEditor tx={sheet.tx} categoryId={sheet.categoryId} direction={sheet.direction} accountId={sheet.accountId} onTransfer={accounts.length > 1 ? () => setSheet({ kind: 'transfer' }) : undefined} accounts={accounts} categories={categories} onClose={() => setSheet(null)} />}
       {sheet?.kind === 'transfer' && <TransferEditor accounts={accounts} onClose={() => setSheet(null)} />}
       {sheet?.kind === 'accounts' && <AccountsEditor accounts={accounts} onClose={() => setSheet(null)} />}
       {sheet?.kind === 'categories' && <CategoriesEditor categories={categories} onClose={() => setSheet(null)} />}

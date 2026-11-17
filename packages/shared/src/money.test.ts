@@ -85,6 +85,13 @@ describe('money quick add', () => {
     expect(parseMoneyQuickAdd('1000 #allowance', categories, accounts).direction).toBe('in');
     expect(parseMoneyQuickAdd('lunch', categories, accounts).amount_centavos).toBeNull();
   });
+  it('follows the Spent / Received switch', () => {
+    expect(parseMoneyQuickAdd('5000 from mama @gotyme', categories, accounts, 'in')).toMatchObject({ amount_centavos: 500000, direction: 'in', account_id: 'gotyme' });
+    expect(parseMoneyQuickAdd('+5000 from mama', categories, accounts, 'out').direction).toBe('in');
+    // An expense category makes no sense on money in, so it is dropped rather than mislabelled.
+    expect(parseMoneyQuickAdd('300 refund #food', categories, accounts, 'in')).toMatchObject({ direction: 'in', category_id: null });
+    expect(parseMoneyQuickAdd('300 refund #allow', categories, accounts, 'in')).toMatchObject({ direction: 'in', category_id: 'allow' });
+  });
 });
 
 describe('notification reader (best effort, not yet checked against real notifications)', () => {

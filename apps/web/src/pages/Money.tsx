@@ -16,7 +16,8 @@ const pad = (n: number) => String(n).padStart(2, '0');
 const forInput = (d: Date) => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
 const timeOf = (iso: string) => new Date(iso).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' });
 
-type Dialog = { kind: 'tx'; tx: Transaction | null; categoryId?: string } | { kind: 'fixed' } | { kind: 'budget' } | { kind: 'accounts' } | { kind: 'categories' } | { kind: 'transfer' } | { kind: 'import' } | null;
+type Direction = 'in' | 'out';
+type Dialog = { kind: 'tx'; tx: Transaction | null; categoryId?: string; direction?: Direction; accountId?: string } | { kind: 'fixed' } | { kind: 'budget' } | { kind: 'accounts' } | { kind: 'categories' } | { kind: 'transfer' } | { kind: 'import' } | null;
 
 export function Money() {
   const store = useMoney();
@@ -66,7 +67,7 @@ export function Money() {
   const firstUse = !loading && accounts.length === 0 && categories.length === 0;
 
   return (
-    <div className="page">
+    <div className="page money">
       <header className="hero">
         <div>
           <p className="hero-date">{now.toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' })}</p>
@@ -87,7 +88,9 @@ export function Money() {
       )}
 
       {!loading && !firstUse && (
-        <>
+        // Two columns on wide screens: today's money on the left, the month on the right. One column on phones, in the same order.
+        <div className="money-cols">
+          <div className="money-col">
           <section className="card safe" aria-labelledby="safe-title">
             <div className="row" style={{ justifyContent: 'space-between' }}>
               <h2 id="safe-title" className="card-label">Safe to spend today</h2>
@@ -120,9 +123,12 @@ export function Money() {
           <section className="wallet" aria-labelledby="wallet-title">
             <ul className="wallet-cards" aria-label="Accounts">
               {accounts.map((a) => (
-                <li key={a.id} className={`wallet-card ${a.institution}`}>
-                  <span className="wallet-card-name">{a.name}</span>
-                  <span className="wallet-card-balance">{formatPeso(accountBalance(a, transactions))}</span>
+                <li key={a.id}>
+                  <button type="button" className={`wallet-card ${a.institution}`} onClick={() => setDialog({ kind: 'tx', tx: null, direction: 'in', accountId: a.id })}
+                    aria-label={`${a.name}, ${formatPeso(accountBalance(a, transactions))}. Add money to ${a.name}`}>
+                    <span className="wallet-card-name">{a.name}</span>
+                    <span className="wallet-card-balance">{formatPeso(accountBalance(a, transactions))}</span>
+                  </button>
                 </li>
               ))}
             </ul>
@@ -131,8 +137,9 @@ export function Money() {
               <h2 id="wallet-title" className="card-label">Balance</h2>
               <p className="display wallet-total">{formatPeso(total)}</p>
               <div className="row wallet-actions">
+                <button type="button" className="chip add-money" onClick={() => setDialog({ kind: 'tx', tx: null, direction: 'in' })} disabled={accounts.length === 0}>+ Add money</button>
                 <button type="button" className="chip" onClick={() => setDialog({ kind: 'transfer' })} disabled={accounts.length < 2}>Transfer</button>
-                <button type="button" className="chip" onClick={() => setDialog({ kind: 'accounts' })}>Edit accounts</button>
+                <button type="button" className="chip" onClick={() => setDialog({ kind: 'accounts' })}>Accounts</button>
                 <button type="button" className="chip" onClick={() => setDialog({ kind: 'import' })} disabled={accounts.length === 0}>Import statement</button>
               </div>
             </div>
@@ -149,9 +156,11 @@ export function Money() {
             </div>
           )}
 
-          <QuickAdd store={store} onMore={() => setDialog({ kind: 'tx', tx: null })} />
+          <QuickAdd store={store} onMore={(direction) => setDialog({ kind: 'tx', tx: null, direction })} />
 
-          <section className="card" aria-labelledby="fixed-title">
+          </div>
+          <div className="money-col">
+          <section className="card fixed-card" aria-labelledby="fixed-title">
             <div className="row" style={{ justifyContent: 'space-between' }}>
               <h2 id="fixed-title" className="card-label">Fixed this month</h2>
               <span className="row" style={{ gap: 8 }}>
@@ -255,10 +264,11 @@ export function Money() {
               </div>
             ))}
           </section>
-        </>
+          </div>
+        </div>
       )}
 
-      {dialog?.kind === 'tx' && <TxDialog tx={dialog.tx} categoryId={dialog.categoryId} store={store} onClose={() => setDialog(null)} />}
+      {dialog?.kind === 'tx' && <TxDialog tx={dialog.tx} categoryId={dialog.categoryId} direction={dialog.direction} accountId={dialog.accountId} store={store} onTransfer={accounts.length > 1 ? () => setDialog({ kind: 'transfer' }) : undefined} onClose={() => setDialog(null)} />}
       {dialog?.kind === 'fixed' && <FixedDialog store={store} onClose={() => setDialog(null)} />}
       {dialog?.kind === 'budget' && <BudgetDialog store={store} fixedTotal={fixedSummary.total} onClose={() => setDialog(null)} />}
       {dialog?.kind === 'accounts' && <AccountsDialog store={store} onClose={() => setDialog(null)} />}
@@ -285,11 +295,19 @@ function TxRow({ tx, account, category, onOpen, actions }: { tx: Transaction; ac
   );
 }
 
-function QuickAdd({ store, onMore }: { store: MoneyStore; onMore: () => void }) {
+function QuickAdd({ store, onMore }: { store: MoneyStore; onMore: (direction: Direction) => void }) {
   const [text, setText] = useState('');
-  const read = parseMoneyQuickAdd(text, store.categories, store.accounts);
+  const [mode, setMode] = useState<Direction>('out');
+  const read = parseMoneyQuickAdd(text, store.categories, store.accounts, mode);
   const account = store.accounts.find((a) => a.id === read.account_id) ?? store.accounts[0];
   const category = store.categories.find((c) => c.id === read.category_id);
+  const incoming = read.direction === 'in';
+  function pick(next: Direction) {
+    setMode(next);
+    // A typed + means money in; switching to Spent takes it out so the switch and the text agree.
+    if (next === 'out') setText((t) => t.replace(/(^|\s)\+(?=\s*(?:₱|php)?\s*\d)/i, '$1'));
+    document.getElementById('money-quick')?.focus();
+  }
   function submit(event: FormEvent) {
     event.preventDefault();
     if (!read.amount_centavos || !account) return;
@@ -298,23 +316,32 @@ function QuickAdd({ store, onMore }: { store: MoneyStore; onMore: () => void }) 
   }
   return (
     <form className="quick" onSubmit={submit}>
-      <label className="sr-only" htmlFor="money-quick">New transaction</label>
-      <input id="money-quick" className="input grow" value={text} maxLength={160} autoComplete="off" placeholder="250 jollibee #food @gcash" onChange={(e) => setText(e.target.value)} aria-describedby="money-hint" />
-      <button type="button" className="btn" onClick={onMore}>More options</button>
-      <button type="submit" className="btn primary" disabled={!read.amount_centavos || !account}>Add</button>
+      <div className="segmented quick-mode" role="group" aria-label="Money out or in">
+        <button type="button" aria-pressed={!incoming} onClick={() => pick('out')}>Spent</button>
+        <button type="button" aria-pressed={incoming} onClick={() => pick('in')}>Received</button>
+      </div>
+      <label className="sr-only" htmlFor="money-quick">{incoming ? 'New money in' : 'New spending'}</label>
+      <input id="money-quick" className="input grow" value={text} maxLength={160} autoComplete="off"
+        placeholder={incoming ? '5000 allowance @gotyme' : '250 jollibee #food @gcash'} onChange={(e) => setText(e.target.value)} aria-describedby="money-hint" />
+      <button type="button" className="btn" onClick={() => onMore(read.direction)}>More options</button>
+      <button type="submit" className="btn primary" disabled={!read.amount_centavos || !account}>{incoming ? 'Add money in' : 'Add expense'}</button>
       <p id="money-hint" className="quick-hint" aria-live="polite">
         {read.amount_centavos && account
-          ? <>Adds <strong>{formatPeso(read.direction === 'in' ? read.amount_centavos : -read.amount_centavos, { sign: true })}</strong>{read.merchant ? ` · ${read.merchant}` : ''} · <strong>{category?.name ?? 'no category'}</strong> · {account.name}</>
-          : 'Type an amount, what it was, then #category and @account. Start with + for money in.'}
+          ? <>{incoming ? 'Adds' : 'Takes'} <strong className={incoming ? 'in' : undefined}>{formatPeso(incoming ? read.amount_centavos : -read.amount_centavos, { sign: true })}</strong> {incoming ? 'to' : 'from'} {account.name}{read.merchant ? ` · ${read.merchant}` : ''} · <strong>{category?.name ?? 'no category'}</strong></>
+          : incoming
+            ? 'Type the amount and where it came from, then @account. Example: 5000 allowance @gotyme.'
+            : 'Type an amount, what it was, then #category and @account.'}
       </p>
     </form>
   );
 }
 
-function TxDialog({ tx, categoryId: startCategory, store, onClose }: { tx: Transaction | null; categoryId?: string; store: MoneyStore; onClose: () => void }) {
+function TxDialog({ tx, categoryId: startCategory, direction: startDirection, accountId: startAccount, store, onTransfer, onClose }: {
+  tx: Transaction | null; categoryId?: string; direction?: Direction; accountId?: string; store: MoneyStore; onTransfer?: () => void; onClose: () => void;
+}) {
   const [amount, setAmount] = useState(tx ? String(tx.amount_centavos / 100) : '');
-  const [direction, setDirection] = useState<'in' | 'out'>(tx?.direction ?? 'out');
-  const [accountId, setAccountId] = useState(tx?.account_id ?? store.accounts[0]?.id ?? '');
+  const [direction, setDirection] = useState<Direction>(tx?.direction ?? startDirection ?? 'out');
+  const [accountId, setAccountId] = useState(tx?.account_id ?? startAccount ?? store.accounts[0]?.id ?? '');
   const [categoryId, setCategoryId] = useState(tx?.category_id ?? startCategory ?? '');
   const [merchant, setMerchant] = useState(tx?.merchant ?? '');
   const [note, setNote] = useState(tx?.note ?? '');
@@ -339,38 +366,39 @@ function TxDialog({ tx, categoryId: startCategory, store, onClose }: { tx: Trans
   }
 
   return (
-    <Modal title={tx ? (tx.status === 'needs_review' ? 'Review transaction' : 'Edit transaction') : 'Add transaction'} onClose={onClose}>
+    <Modal title={tx ? (tx.status === 'needs_review' ? 'Review transaction' : 'Edit transaction') : direction === 'in' ? 'Add money in' : 'Add expense'} onClose={onClose}>
       <form className="form" onSubmit={submit}>
         {isTransfer && <p className="note muted">This is one half of a transfer between your accounts. It doesn't count as spending or income.</p>}
+        {!isTransfer && (
+          <div className="segmented kind-switch" role="group" aria-label="What kind of transaction">
+            <button type="button" aria-pressed={direction === 'out'} onClick={() => setDirection('out')}>Spent</button>
+            <button type="button" aria-pressed={direction === 'in'} onClick={() => setDirection('in')}>Received</button>
+            {!tx && onTransfer && <button type="button" aria-pressed={false} onClick={onTransfer}>Transfer</button>}
+          </div>
+        )}
+        {direction === 'in' && !tx && <p className="note muted">Money that came into one of your accounts, like allowance, pay or a refund. It raises that account's balance.</p>}
         <div className="two">
           <label className="field">Amount (₱)
-            <input className="input" inputMode="decimal" value={amount} onChange={(e) => setAmount(e.target.value)} autoFocus placeholder="250" />
+            <input className="input" inputMode="decimal" value={amount} onChange={(e) => setAmount(e.target.value)} data-autofocus placeholder={direction === 'in' ? '5000' : '250'} />
           </label>
-          <fieldset className="field toggle">
-            <legend>Type</legend>
-            <div className="segmented">
-              <button type="button" aria-pressed={direction === 'out'} onClick={() => setDirection('out')}>Money out</button>
-              <button type="button" aria-pressed={direction === 'in'} onClick={() => setDirection('in')}>Money in</button>
-            </div>
-          </fieldset>
-        </div>
-        <div className="two">
-          <label className="field">Account
+          <label className="field">{direction === 'in' ? 'Into' : 'Paid from'}
             <select className="input" value={accountId} onChange={(e) => setAccountId(e.target.value)}>
               {!accountId && <option value="">Pick an account</option>}
               {store.accounts.map((a) => <option key={a.id} value={a.id}>{a.name}</option>)}
             </select>
           </label>
+        </div>
+        <div className="two">
           <label className="field">Category
             <select className="input" value={options.some((c) => c.id === categoryId) ? categoryId : ''} onChange={(e) => setCategoryId(e.target.value)} disabled={isTransfer}>
               <option value="">No category</option>
               {options.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
             </select>
           </label>
+          <label className="field">{direction === 'in' ? 'From' : 'Paid to'}
+            <input className="input" value={merchant} maxLength={120} placeholder={direction === 'in' ? 'Mama, work, refund' : 'Jollibee'} onChange={(e) => setMerchant(e.target.value)} />
+          </label>
         </div>
-        <label className="field">{direction === 'in' ? 'From' : 'Paid to'}
-          <input className="input" value={merchant} maxLength={120} onChange={(e) => setMerchant(e.target.value)} />
-        </label>
         <label className="field">When
           <input className="input" type="datetime-local" value={when} onClick={openPicker} onChange={(e) => setWhen(e.target.value)} required />
         </label>
@@ -382,7 +410,7 @@ function TxDialog({ tx, categoryId: startCategory, store, onClose }: { tx: Trans
           {tx && <button type="button" className="btn danger" onClick={() => { store.removeTransaction(tx.id); onClose(); }}>Delete</button>}
           <span className="grow" />
           <button type="button" className="btn" onClick={onClose}>Cancel</button>
-          <button type="submit" className="btn primary">{tx?.status === 'needs_review' ? 'Confirm' : 'Save'}</button>
+          <button type="submit" className="btn primary">{tx?.status === 'needs_review' ? 'Confirm' : tx ? 'Save' : direction === 'in' ? 'Add money in' : 'Add expense'}</button>
         </div>
       </form>
     </Modal>
@@ -619,7 +647,7 @@ function BudgetDialog({ store, fixedTotal, onClose }: { store: MoneyStore; fixed
       <form className="form" onSubmit={submit}>
         <p className="note muted">How much you allow yourself to spend in a month, fixed expenses included. Dirary sets your fixed expenses aside, subtracts what you've spent, and spreads the rest over the days left. That's your daily limit.</p>
         <label className="field">Monthly budget (₱)
-          <input className="input" inputMode="decimal" value={amount} placeholder="15000" onChange={(e) => setAmount(e.target.value)} autoFocus />
+          <input className="input" inputMode="decimal" value={amount} placeholder="15000" onChange={(e) => setAmount(e.target.value)} data-autofocus />
         </label>
         {centavos !== null && fixedTotal > 0 && <p className="note muted">{formatPeso(fixedTotal)} of it is fixed expenses, leaving {formatPeso(centavos - fixedTotal)} for everyday spending.</p>}
         {problem && <p className="note error" role="alert">{problem}</p>}

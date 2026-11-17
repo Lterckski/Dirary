@@ -220,8 +220,9 @@ input[type='date'].input, input[type='time'].input { cursor: pointer; }
 /* The wallet: account cards tucked into a stitched pocket. */
 .wallet { display: flex; flex-direction: column; }
 .wallet-cards { list-style: none; margin: 0 14px; padding: 8px 0 0; display: flex; gap: 6px; overflow-x: auto; scrollbar-width: none; }
-.wallet-card { flex: 1 0 112px; min-width: 0; padding: 12px 14px 40px; border-radius: 16px 16px 0 0; display: flex; flex-direction: column; gap: 2px; color: var(--onInkBlue); background: var(--muted); }
-.wallet-card:nth-child(even) { margin-top: 8px; }
+.wallet-cards li { flex: 1 0 112px; min-width: 0; display: flex; }
+.wallet-cards li:nth-child(even) { margin-top: 8px; }
+.wallet-card { flex: 1; min-width: 0; border: none; font: inherit; text-align: left; cursor: pointer; padding: 12px 14px 40px; border-radius: 16px 16px 0 0; display: flex; flex-direction: column; gap: 2px; color: var(--onInkBlue); background: var(--muted); }
 .wallet-card.securitybank { background: var(--amber); }
 .wallet-card.gotyme { background: var(--tongue); }
 .wallet-card.gcash { background: var(--inkBlue); }
@@ -283,3 +284,25 @@ input[type='date'].input, input[type='time'].input { cursor: pointer; }
 .recap-legend { display: flex; flex-wrap: wrap; gap: 6px 16px; font-size: 12px; color: var(--muted); }
 .recap-legend span { display: inline-flex; align-items: center; gap: 6px; }
 .recap-legend i { width: 10px; height: 10px; border-radius: 3px; display: inline-block; }
+
+/* ---- Spent / Received ---- */
+.quick-mode { flex: 1 1 100%; align-self: flex-start; }
+.quick-mode button, .kind-switch button { flex: 1; min-height: 40px; font-size: 14px; }
+.quick-mode button[aria-pressed='true'], .kind-switch button[aria-pressed='true'] { background: var(--inkBlue); color: var(--onInkBlue); box-shadow: none; }
+@media (min-width: 721px) { .quick-mode { flex: 0 0 auto; } .quick-mode button { padding: 0 20px; } }
+.kind-switch { width: 100%; }
+.wallet-card:hover { filter: brightness(1.06); }
+.wallet-card:active { transform: translateY(2px); }
+.wallet-card:focus-visible { outline: 2px solid var(--text); outline-offset: 2px; }
+.chip.add-money { background: var(--inkBlue); border-color: var(--inkBlue); color: var(--onInkBlue); }
+.chip.add-money:hover { filter: brightness(1.08); }
+
+/* ---- Money page width: no dead space beside it on wide screens ---- */
+.page.money { max-width: none; }
+.money-cols { display: flex; flex-direction: column; gap: 24px; width: 100%; max-width: 1400px; }
+.money-col { display: flex; flex-direction: column; gap: 24px; min-width: 0; }
+@media (min-width: 1200px) {
+  .money-cols { display: grid; grid-template-columns: minmax(0, 1.1fr) minmax(0, 1fr); align-items: start; }
+  /* Both columns tuck their first card under the blue header, so Ink peeks over whichever sits below it. */
+  .card.fixed-card { position: relative; z-index: 1; margin-top: -50px; border-radius: 28px; }
+}

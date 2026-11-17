@@ -15,6 +15,8 @@ export function Modal({ title, onClose, children }: { title: string; onClose: ()
   useEffect(() => {
     const dialog = ref.current;
     if (dialog && !dialog.open) dialog.showModal();
+    // showModal focuses the first button; put the cursor in the field marked for it instead.
+    dialog?.querySelector<HTMLElement>('[data-autofocus]')?.focus();
   }, []);
   return (
     <dialog ref={ref} className="modal" aria-labelledby="modal-title" onClose={onClose} onClick={(e) => { if (e.target === ref.current) onClose(); }}>
