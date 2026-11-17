@@ -67,6 +67,12 @@ export function Health() {
     navigate('.', { replace: true, state: null }); // so a reload doesn't search again
   }, [location.state, navigate]);
 
+  // Today's + menu can open either tab.
+  useEffect(() => {
+    const asked = (location.state as { tab?: 'food' | 'workouts' } | null)?.tab;
+    if (asked === 'food' || asked === 'workouts') setTab(asked);
+  }, [location.state]);
+
   // The floating + button starts a search.
   useEffect(() => {
     const focus = () => window.setTimeout(() => search.current?.focus(), 30);

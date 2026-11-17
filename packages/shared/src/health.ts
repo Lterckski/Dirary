@@ -80,7 +80,7 @@ export function servingsOf(food: Pick<Food, 'servings'>): Serving[] {
 
 export const servingsText = (servings: readonly Serving[]): string => JSON.stringify(servings.map((s) => ({ label: s.label.trim(), grams: round1(s.grams) })));
 
-const round1 = (n: number) => Math.round(n * 10) / 10;
+export const round1 = (n: number): number => Math.round(n * 10) / 10;
 
 /** Calories and protein for an amount of a food, to one decimal. */
 export function nutrition(food: Pick<Food, 'kcal_per_100g' | 'protein_per_100g'>, grams: number): { kcal: number; protein: number } {

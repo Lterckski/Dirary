@@ -13,6 +13,7 @@ import { useWorkoutTasks } from '../links/useWorkoutTasks';
 import { useWorkouts } from '../health/useWorkouts';
 import { useMoney } from '../money/useMoney';
 import { useTasks } from '../tasks/useTasks';
+import { useTicking, type Phase } from '../tasks/useTicking';
 import { TxDialog } from './Money';
 
 type View = 'today' | 'upcoming' | 'inbox' | 'done' | string; // any other string is a list id
@@ -61,48 +62,13 @@ export function Tasks() {
   const todayData = useMemo(() => todayView(tasks, today, toLocal), [tasks, today]);
   const coach = todayCoach(todayData, justCompleted);
 
-  // Ticking a task: it shows as checked for a moment, folds away, and only then is saved as done.
-  // Ticking it again during that moment cancels. Leaving the page saves anything still waiting.
-  const [phases, setPhases] = useState<Record<string, Phase>>({});
-  const waiting = useRef(new Map<string, { task: Task; timers: number[] }>());
-  const lastDone = useRef(0);
-  const toggleRef = useRef(toggleLinked);
-  toggleRef.current = toggleLinked;
-  const setPhase = (id: string, phase: Phase | null) => setPhases((all) => {
-    const next = { ...all };
-    if (phase) next[id] = phase; else delete next[id];
-    return next;
+  const { phases, toggle, lastDone } = useTicking(toggleLinked, {
+    onTick: () => { setJustCompleted(true); window.setTimeout(() => setJustCompleted(false), 2500); },
+    onSaved: (task) => {
+      const amount = bills.isBill(task) || money.accounts.length === 0 ? null : amountInTask(task.title);
+      if (amount) setOffer({ amount, note: taskWithoutAmount(task.title) });
+    },
   });
-  useEffect(() => () => {
-    for (const { task, timers } of waiting.current.values()) { timers.forEach(clearTimeout); toggleRef.current(task); }
-    waiting.current.clear();
-  }, []);
-
-  function toggle(task: Task) {
-    if (task.status === 'done') return toggleLinked(task);
-    const pending = waiting.current.get(task.id);
-    if (pending) {
-      pending.timers.forEach(clearTimeout);
-      waiting.current.delete(task.id);
-      setPhase(task.id, null);
-      return;
-    }
-    setJustCompleted(true);
-    window.setTimeout(() => setJustCompleted(false), 2500);
-    setPhase(task.id, 'checked');
-    const timers = [
-      window.setTimeout(() => setPhase(task.id, 'leaving'), CHECKED_MS),
-      window.setTimeout(() => {
-        waiting.current.delete(task.id);
-        setPhase(task.id, null);
-        lastDone.current = Date.now();
-        toggleLinked(task);
-        const amount = bills.isBill(task) || money.accounts.length === 0 ? null : amountInTask(task.title);
-        if (amount) setOffer({ amount, note: taskWithoutAmount(task.title) });
-      }, CHECKED_MS + FOLD_MS),
-    ];
-    waiting.current.set(task.id, { task, timers });
-  }
 
   // New tasks (from the quick-add box or another device) slide in; the ones there on load don't.
   const known = useRef<Set<string> | null>(null);
@@ -253,7 +219,7 @@ export function Tasks() {
 }
 
 /** Today's date, refreshed when the tab regains focus so the view rolls over after midnight. */
-function useToday(): string {
+export function useToday(): string {
   const [today, setToday] = useState(() => localDate());
   const [, setTick] = useState(0); // redraws once a minute so "in 3 hours" stays right
   useEffect(() => {
@@ -310,12 +276,7 @@ function Empty({ line }: { line: string }) {
   );
 }
 
-type Phase = 'checked' | 'leaving';
-/** How long a ticked task stays visible, checked, before folding away; then how long the fold takes. */
-const CHECKED_MS = 340;
-const FOLD_MS = 220;
-
-function TaskRow({ task, list, today, showDay, phase, fresh, onToggle, onOpen }: {
+export function TaskRow({ task, list, today, showDay, phase, fresh, onToggle, onOpen }: {
   task: Task; list: List | undefined; today: string; showDay: boolean; phase?: Phase; fresh?: boolean; onToggle: (t: Task) => void; onOpen: (t: Task) => void;
 }) {
   const done = task.status === 'done' || phase !== undefined;

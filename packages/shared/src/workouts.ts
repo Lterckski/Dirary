@@ -181,10 +181,14 @@ export const weekStart = (date: string): string => addDays(date, -((weekdayOf(da
 
 /** Monday to Sunday of this week: done, planned, missed or rest, from your routines and workouts. */
 export function weekStrip(routines: readonly Routine[], sessions: readonly WorkoutSession[], today: string): WeekDay[] {
+  return weekStripFor(routines, sessions, weekStart(today), today);
+}
+
+/** The same strip for any week, from its Monday. Past weeks use the routines as they are now. */
+export function weekStripFor(routines: readonly Routine[], sessions: readonly WorkoutSession[], monday: string, today: string): WeekDay[] {
   const planned = new Set(live(routines).filter((r) => planOf(r).length > 0).flatMap(weekdaysOf));
   const doneDays = new Set(live(sessions).filter((s) => s.done_at).map((s) => s.planned_date));
   const plannedDays = new Set(live(sessions).filter((s) => !s.done_at).map((s) => s.planned_date));
-  const monday = weekStart(today);
   return Array.from({ length: 7 }, (_, i) => {
     const date = addDays(monday, i);
     const weekday = weekdayOf(date);
