@@ -43,10 +43,10 @@ export function Week() {
           <p className="hero-date">{review.isThisWeek ? 'This week' : monday === addDays(thisMonday, -7) ? 'Last week' : 'Weekly review'}</p>
           <h1 className="display">{weekLabel(review.monday)}</h1>
           <div className="week-nav" role="group" aria-label="Choose a week">
-            <button type="button" className="add-chip" onClick={() => go(addDays(monday, -7))} aria-label="Previous week">
+            <button type="button" className="add-chip" onClick={() => go(addDays(monday, -7))}>
               <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M10 3 5 8l5 5" /></svg>Earlier
             </button>
-            <button type="button" className="add-chip" onClick={() => go(addDays(monday, 7))} disabled={review.isThisWeek} aria-label="Next week">
+            <button type="button" className="add-chip" onClick={() => go(addDays(monday, 7))} disabled={review.isThisWeek}>
               Later<svg viewBox="0 0 16 16" aria-hidden="true"><path d="m6 3 5 5-5 5" /></svg>
             </button>
           </div>

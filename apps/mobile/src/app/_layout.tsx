@@ -22,7 +22,7 @@ export function CoachButton() {
     <Pressable
       accessibilityRole="button"
       accessibilityLabel="Chat with Ink"
-      onPress={() => Alert.alert('Ink', 'Coach chat arrives after all four modules are built.')}
+      onPress={() => Alert.alert('Ink', 'Coach chat is on the later list. For now, my tips are on each screen.')}
       style={{ width: 48, height: 48, borderRadius: 24, marginRight: 16, backgroundColor: colors.inkBlue, alignItems: 'center', justifyContent: 'center' }}>
       <StaticMascot mood="coach" size={44} />
     </Pressable>
