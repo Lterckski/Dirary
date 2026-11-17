@@ -44,6 +44,8 @@ export const Transaction = z.object({
   status: z.enum(['needs_review', 'confirmed']),
   fingerprint: z.string().nullable(),
   transfer_group_id: z.uuid().nullable(),
+  /** Set on the payment of a fixed monthly expense. */
+  fixed_expense_id: z.uuid().nullable(),
   ...stamps,
 });
 export type Transaction = z.infer<typeof Transaction>;
@@ -60,7 +62,7 @@ export const TRANSACTIONS_TABLE = 'transactions';
 export const ACCOUNT_COLUMNS = 'id, name, institution, opening_balance_centavos, sort_order, created_at, updated_at, deleted_at';
 export const CATEGORY_COLUMNS = 'id, name, kind, color, monthly_limit_centavos, sort_order, created_at, updated_at, deleted_at';
 export const TRANSACTION_COLUMNS =
-  'id, account_id, category_id, amount_centavos, direction, merchant, note, occurred_at, source, status, fingerprint, transfer_group_id, created_at, updated_at, deleted_at';
+  'id, account_id, category_id, amount_centavos, direction, merchant, note, occurred_at, source, status, fingerprint, transfer_group_id, fixed_expense_id, created_at, updated_at, deleted_at';
 
 /** Starter set, offered with one tap on first use. */
 export const STARTER_ACCOUNTS: { name: string; institution: Institution }[] = [
@@ -170,6 +172,21 @@ export function needsReview(transactions: readonly Transaction[]): Transaction[]
   return live(transactions).filter((t) => t.status === 'needs_review').sort((a, b) => (a.occurred_at < b.occurred_at ? 1 : -1));
 }
 
+/**
+ * One account's balance at the end of each day it had activity, for checking against a bank statement.
+ * Keyed by "YYYY-MM-DD"; counts the same transactions as accountBalance.
+ */
+export function endOfDayBalances(account: Account, transactions: readonly Transaction[], toLocalDate: (iso: string) => string): Map<string, number> {
+  const rows = transactions.filter((t) => counted(t) && t.account_id === account.id).sort((a, b) => (a.occurred_at < b.occurred_at ? -1 : 1));
+  const out = new Map<string, number>();
+  let balance = account.opening_balance_centavos;
+  for (const t of rows) {
+    balance += signed(t);
+    out.set(toLocalDate(t.occurred_at), balance);
+  }
+  return out;
+}
+
 export function recentTransactions(transactions: readonly Transaction[], limit = 50): Transaction[] {
   return transactions.filter(counted).sort((a, b) => (a.occurred_at < b.occurred_at ? 1 : -1)).slice(0, limit);
 }
@@ -237,7 +254,11 @@ function pick<T extends { id: string; name: string }>(tag: string, rows: readonl
  * "250 jollibee #food @gcash" → ₱250 out, merchant Jollibee, category Food, account GCash.
  * A leading + means money in: "+5000 allowance #allowance @gotyme".
  */
-export function parseMoneyQuickAdd(text: string, categories: readonly Category[], accounts: readonly Account[]): MoneyQuickAdd {
+/**
+ * `mode` is the Spent / Received switch beside the box. Received makes it money in; so does a leading + or an
+ * income category, whatever the switch says. A category of the wrong kind for the direction is dropped.
+ */
+export function parseMoneyQuickAdd(text: string, categories: readonly Category[], accounts: readonly Account[], mode: 'in' | 'out' = 'out'): MoneyQuickAdd {
   let rest = ` ${text} `;
   let category_id: string | null = null;
   let account_id: string | null = null;
@@ -254,7 +275,7 @@ export function parseMoneyQuickAdd(text: string, categories: readonly Category[]
   }
 
   let amount_centavos: number | null = null;
-  let direction: 'in' | 'out' = 'out';
+  let direction: 'in' | 'out' = mode;
   const amount = /\s(\+)?(?:₱|php\s?)?(\d[\d,]*(?:\.\d{1,2})?)(?=\s)/i.exec(rest);
   if (amount) {
     amount_centavos = parseAmount(amount[2]!);
@@ -262,7 +283,9 @@ export function parseMoneyQuickAdd(text: string, categories: readonly Category[]
     rest = rest.replace(amount[0], ' ');
   }
   // An income category implies money in.
-  if (category_id && categories.find((c) => c.id === category_id)?.kind === 'income') direction = 'in';
+  const kind = category_id ? categories.find((c) => c.id === category_id)?.kind : undefined;
+  if (kind === 'income') direction = 'in';
+  else if (kind === 'expense' && direction === 'in') category_id = null;
 
   const merchant = rest.replace(/\s+/g, ' ').trim();
   return { amount_centavos, direction, merchant: merchant ? merchant.charAt(0).toUpperCase() + merchant.slice(1) : null, category_id, account_id };

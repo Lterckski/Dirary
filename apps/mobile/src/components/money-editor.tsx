@@ -3,13 +3,13 @@ import { Pressable, TextInput, View } from 'react-native';
 import { colors, space } from '@dirary/ui';
 import {
   INSTITUTIONS, INSTITUTION_LABEL, LIST_COLORS, TransactionDraft, formatPeso, parseAmount,
-  type Account, type Category, type Institution, type ListColor, type Transaction,
+  type Account, type Category, type FixedExpense, type Institution, type ListColor, type MoneyPlan, type Stash, type Transaction,
 } from '@dirary/shared';
 
 import { Chip } from '@/components/task-bits';
 import { Field, Sheet, Wrap } from '@/components/task-editor';
 import { Button, Text, styles } from '@/components/ui';
-import { addTransaction, addTransfer, removeAccount, removeCategory, removeTransaction, saveAccount, saveCategory, updateTransaction } from '@/lib/money-store';
+import { addTransaction, addTransfer, removeAccount, removeCategory, removeFixed, removeStash, removeTransaction, resetMoney, saveAccount, saveCategory, saveFixed, saveStash, setMonthlyBudget, updateTransaction } from '@/lib/money-store';
 
 const Problem = ({ text }: { text: string | null }) => (text ? <Text variant="label" style={{ color: colors.red }} accessibilityRole="alert">{text}</Text> : null);
 const Danger = ({ label, onPress }: { label: string; onPress: () => void }) => (
@@ -19,13 +19,19 @@ const Danger = ({ label, onPress }: { label: string; onPress: () => void }) => (
 );
 const money = { ...styles.input, fontVariant: ['tabular-nums' as const] };
 
-export function TransactionEditor({ tx, accounts, categories, onClose }: { tx: Transaction | null; accounts: Account[]; categories: Category[]; onClose: () => void }) {
-  const [amount, setAmount] = useState(tx ? String(tx.amount_centavos / 100) : '');
-  const [direction, setDirection] = useState<'in' | 'out'>(tx?.direction ?? 'out');
-  const [accountId, setAccountId] = useState<string | null>(tx?.account_id ?? accounts[0]?.id ?? null);
-  const [categoryId, setCategoryId] = useState<string | null>(tx?.category_id ?? null);
+import { Segmented } from '@/components/motion-bits';
+
+export { Segmented };
+
+export function TransactionEditor({ tx, categoryId: startCategory, direction: startDirection, accountId: startAccount, amount: startAmount, note: startNote, accounts, categories, onTransfer, onClose }: {
+  tx: Transaction | null; categoryId?: string; direction?: 'in' | 'out'; accountId?: string; amount?: number; note?: string; accounts: Account[]; categories: Category[]; onTransfer?: () => void; onClose: () => void;
+}) {
+  const [amount, setAmount] = useState(tx ? String(tx.amount_centavos / 100) : startAmount ? String(startAmount / 100) : '');
+  const [direction, setDirection] = useState<'in' | 'out'>(tx?.direction ?? startDirection ?? 'out');
+  const [accountId, setAccountId] = useState<string | null>(tx?.account_id ?? startAccount ?? accounts[0]?.id ?? null);
+  const [categoryId, setCategoryId] = useState<string | null>(tx?.category_id ?? startCategory ?? null);
   const [merchant, setMerchant] = useState(tx?.merchant ?? '');
-  const [note, setNote] = useState(tx?.note ?? '');
+  const [note, setNote] = useState(tx?.note ?? startNote ?? '');
   const [problem, setProblem] = useState<string | null>(null);
   const options = categories.filter((c) => c.kind === (direction === 'in' ? 'income' : 'expense'));
   const isTransfer = tx?.transfer_group_id != null;
@@ -46,19 +52,22 @@ export function TransactionEditor({ tx, accounts, categories, onClose }: { tx: T
   }
 
   return (
-    <Sheet title={tx ? (reviewing ? 'Review' : 'Edit transaction') : 'Add transaction'} onClose={onClose}>
+    <Sheet title={tx ? (reviewing ? 'Review' : 'Edit transaction') : direction === 'in' ? 'Add money in' : 'Add expense'} onClose={onClose}>
       {isTransfer && <Text variant="label" muted>One half of a transfer between your accounts. It doesn't count as spending or income.</Text>}
       {reviewing && <Text variant="label" muted>Logged from a notification. Check the amount, account and category, then confirm.</Text>}
+      {!isTransfer && (
+        <Segmented
+          label="What kind of transaction"
+          value={direction}
+          options={[{ value: 'out', label: 'Spent' }, { value: 'in', label: 'Received' }, ...(!tx && onTransfer ? [{ value: 'transfer' as const, label: 'Transfer' }] : [])]}
+          onChange={(v) => (v === 'transfer' ? onTransfer?.() : setDirection(v))}
+        />
+      )}
+      {direction === 'in' && !tx && <Text variant="label" muted>Money that came into one of your accounts, like allowance, pay or a refund. It raises that account's balance.</Text>}
       <Field label="Amount (₱)">
-        <TextInput accessibilityLabel="Amount in pesos" style={money} keyboardType="decimal-pad" value={amount} onChangeText={setAmount} placeholder="250" placeholderTextColor={colors.faint} autoFocus={!tx} />
+        <TextInput accessibilityLabel="Amount in pesos" style={money} keyboardType="decimal-pad" value={amount} onChangeText={setAmount} placeholder={direction === 'in' ? '5000' : '250'} placeholderTextColor={colors.faint} autoFocus={!tx} />
       </Field>
-      <Field label="Type">
-        <Wrap>
-          <Chip label="Money out" active={direction === 'out'} onPress={() => setDirection('out')} />
-          <Chip label="Money in" active={direction === 'in'} onPress={() => setDirection('in')} />
-        </Wrap>
-      </Field>
-      <Field label="Account">
+      <Field label={direction === 'in' ? 'Into' : 'Paid from'}>
         <Wrap>{accounts.map((a) => <Chip key={a.id} label={a.name} active={accountId === a.id} onPress={() => setAccountId(a.id)} />)}</Wrap>
       </Field>
       {!isTransfer && (
@@ -76,7 +85,7 @@ export function TransactionEditor({ tx, accounts, categories, onClose }: { tx: T
         <TextInput accessibilityLabel="Note" style={styles.input} value={note} maxLength={500} onChangeText={setNote} />
       </Field>
       <Problem text={problem} />
-      <Button primary label={reviewing ? 'Confirm' : 'Save'} onPress={save} />
+      <Button primary label={reviewing ? 'Confirm' : tx ? 'Save' : direction === 'in' ? 'Add money in' : 'Add expense'} onPress={save} />
       {tx && <Danger label="Delete transaction" onPress={() => { onClose(); removeTransaction(tx); }} />}
     </Sheet>
   );
@@ -108,7 +117,7 @@ export function TransferEditor({ accounts, onClose }: { accounts: Account[]; onC
   );
 }
 
-export function AccountsEditor({ accounts, onClose }: { accounts: Account[]; onClose: () => void }) {
+export function AccountsEditor({ accounts, onReset, onClose }: { accounts: Account[]; onReset: () => void; onClose: () => void }) {
   const [name, setName] = useState('');
   const [institution, setInstitution] = useState<Institution>('other');
   const [opening, setOpening] = useState('');
@@ -144,6 +153,40 @@ export function AccountsEditor({ accounts, onClose }: { accounts: Account[]; onC
         <TextInput accessibilityLabel="Opening balance in pesos" style={money} keyboardType="decimal-pad" value={opening} placeholder="0" placeholderTextColor={colors.faint} onChangeText={setOpening} />
       </Field>
       <Button primary label="Add account" disabled={!name.trim()} onPress={add} />
+      <View style={{ marginTop: space[4], paddingTop: space[4], borderTopWidth: 1, borderColor: colors.line, gap: space[2] }}>
+        <Text weight="semi">Start over from ₱0</Text>
+        <Text variant="label" muted>Deletes every transaction and sets every account to ₱0. Asks for your password first.</Text>
+        <Danger label="Reset money to ₱0" onPress={onReset} />
+      </View>
+    </Sheet>
+  );
+}
+
+export function ResetEditor({ count, onClose }: { count: number; onClose: () => void }) {
+  const [password, setPassword] = useState('');
+  const [busy, setBusy] = useState(false);
+  const [problem, setProblem] = useState<string | null>(null);
+  async function reset() {
+    if (!password || busy) return;
+    setBusy(true);
+    setProblem(null);
+    const failure = await resetMoney(password);
+    setBusy(false);
+    if (failure) { setProblem(failure); setPassword(''); return; }
+    onClose();
+  }
+  return (
+    <Sheet title="Reset money to ₱0" onClose={onClose}>
+      <Text>This deletes {count === 1 ? 'your 1 transaction' : `all ${count.toLocaleString('en-US')} transactions`}, including ones waiting to be reviewed, and sets every account's balance to ₱0. It can't be undone.</Text>
+      <Text variant="label" muted>Your accounts, categories, fixed expenses, monthly budget and stashes stay. Stashes are emptied to ₱0.</Text>
+      <Field label="Your password">
+        <TextInput accessibilityLabel="Your password" style={styles.input} value={password} onChangeText={setPassword} secureTextEntry autoComplete="current-password" textContentType="password" autoCapitalize="none" autoFocus onSubmitEditing={reset} />
+      </Field>
+      <Problem text={problem} />
+      <Pressable accessibilityRole="button" accessibilityState={{ disabled: !password || busy }} disabled={!password || busy} onPress={reset}
+        style={{ minHeight: 52, borderRadius: 26, alignItems: 'center', justifyContent: 'center', backgroundColor: colors.red, opacity: !password || busy ? 0.45 : 1 }}>
+        <Text weight="bold" style={{ color: colors.night }}>{busy ? 'Resetting…' : 'Reset to ₱0'}</Text>
+      </Pressable>
     </Sheet>
   );
 }
@@ -199,6 +242,175 @@ export function CategoriesEditor({ categories, onClose }: { categories: Category
         <Wrap>{LIST_COLORS.map((c) => <Chip key={c} label={COLOR_NAMES[c]} dot={c} active={color === c} onPress={() => setColor(c)} />)}</Wrap>
       </Field>
       <Button primary label="Add category" disabled={!name.trim()} onPress={add} />
+    </Sheet>
+  );
+}
+
+export function BudgetEditor({ plan, fixedTotal, onClose }: { plan: MoneyPlan | null; fixedTotal: number; onClose: () => void }) {
+  const [amount, setAmount] = useState(plan?.monthly_budget_centavos ? String(plan.monthly_budget_centavos / 100) : '');
+  const [problem, setProblem] = useState<string | null>(null);
+  const centavos = parseAmount(amount);
+  async function save() {
+    if (amount.trim() === '') { onClose(); return setMonthlyBudget(null); }
+    if (!centavos) return setProblem('Enter an amount, like 15000.');
+    onClose();
+    await setMonthlyBudget(centavos);
+  }
+  return (
+    <Sheet title="Monthly budget" onClose={onClose}>
+      <Text variant="label" muted>How much you allow yourself to spend in a month, fixed expenses included. Dirary sets your fixed expenses aside, subtracts what you've spent, and spreads the rest over the days left. That's your daily limit.</Text>
+      <Field label="Monthly budget (₱)">
+        <TextInput accessibilityLabel="Monthly budget in pesos" style={money} keyboardType="decimal-pad" value={amount} onChangeText={setAmount} placeholder="15000" placeholderTextColor={colors.faint} autoFocus />
+      </Field>
+      {centavos !== null && fixedTotal > 0 && <Text variant="label" muted>{formatPeso(fixedTotal)} of it is fixed expenses, leaving {formatPeso(centavos - fixedTotal)} for everyday spending.</Text>}
+      <Problem text={problem} />
+      <Button primary label="Save" onPress={save} />
+    </Sheet>
+  );
+}
+
+export function FixedEditor({ fixed, accounts, categories, onClose }: { fixed: FixedExpense[]; accounts: Account[]; categories: Category[]; onClose: () => void }) {
+  const [editing, setEditing] = useState<FixedExpense | null>(null);
+  const [name, setName] = useState('');
+  const [amount, setAmount] = useState('');
+  const [dueDay, setDueDay] = useState('1');
+  const [categoryId, setCategoryId] = useState<string | null>(null);
+  const [accountId, setAccountId] = useState<string | null>(null);
+  const [problem, setProblem] = useState<string | null>(null);
+  const options = categories.filter((c) => c.kind === 'expense');
+
+  function start(expense: FixedExpense | null) {
+    setEditing(expense);
+    setName(expense?.name ?? '');
+    setAmount(expense ? String(expense.amount_centavos / 100) : '');
+    setDueDay(String(expense?.due_day ?? 1));
+    setCategoryId(expense?.category_id ?? null);
+    setAccountId(expense?.account_id ?? null);
+    setProblem(null);
+  }
+  async function save() {
+    const centavos = parseAmount(amount);
+    const day = Number(dueDay);
+    if (!name.trim()) return setProblem('Give it a name, like Rent.');
+    if (!centavos) return setProblem('Enter an amount, like 3500.');
+    if (!Number.isInteger(day) || day < 1 || day > 31) return setProblem('The due day is a day of the month, 1 to 31.');
+    const fields = { name: name.trim().slice(0, 60), amount_centavos: centavos, due_day: day, category_id: categoryId, account_id: accountId };
+    const target = editing;
+    start(null);
+    await saveFixed(target ? { ...target, ...fields } : { ...fields, sort_order: fixed.length });
+  }
+
+  return (
+    <Sheet title="Fixed expenses" onClose={onClose}>
+      <Text variant="label" muted>What you pay every month. Tick one off on the Money screen when it's paid; that logs the payment. Tap one here to change it.</Text>
+      {fixed.map((e) => (
+        <View key={e.id} style={{ flexDirection: 'row', alignItems: 'center', gap: space[2], paddingLeft: space[4], borderRadius: 20, borderWidth: 1, borderColor: editing?.id === e.id ? colors.inkBlue : colors.line, backgroundColor: colors.surface }}>
+          <Pressable accessibilityRole="button" accessibilityLabel={`Edit ${e.name}`} onPress={() => start(e)} style={{ flex: 1, minHeight: 56, justifyContent: 'center', gap: 2 }}>
+            <Text weight="semi">{e.name}</Text>
+            <Text variant="label" muted style={{ fontVariant: ['tabular-nums'] }}>{formatPeso(e.amount_centavos)} · day {e.due_day}</Text>
+          </Pressable>
+          <Danger label="Delete" onPress={() => { if (editing?.id === e.id) start(null); removeFixed(e); }} />
+        </View>
+      ))}
+      <Text variant="heading">{editing ? `Change ${editing.name}` : 'Add one'}</Text>
+      <Field label="Name">
+        <TextInput accessibilityLabel="Name" style={styles.input} value={name} maxLength={60} onChangeText={setName} placeholder="Rent" placeholderTextColor={colors.faint} />
+      </Field>
+      <Field label="Amount (₱)">
+        <TextInput accessibilityLabel="Amount in pesos" style={money} keyboardType="decimal-pad" value={amount} onChangeText={setAmount} placeholder="3500" placeholderTextColor={colors.faint} />
+      </Field>
+      <Field label="Due day of the month">
+        <TextInput accessibilityLabel="Due day of the month" style={money} keyboardType="number-pad" value={dueDay} maxLength={2} onChangeText={setDueDay} />
+      </Field>
+      <Field label="Category">
+        <Wrap>
+          <Chip label="None" active={categoryId === null} onPress={() => setCategoryId(null)} />
+          {options.map((c) => <Chip key={c.id} label={c.name} dot={c.color} active={categoryId === c.id} onPress={() => setCategoryId(c.id)} />)}
+        </Wrap>
+      </Field>
+      <Field label="Paid from">
+        <Wrap>
+          <Chip label="First account" active={accountId === null} onPress={() => setAccountId(null)} />
+          {accounts.map((a) => <Chip key={a.id} label={a.name} active={accountId === a.id} onPress={() => setAccountId(a.id)} />)}
+        </Wrap>
+      </Field>
+      <Problem text={problem} />
+      <View style={styles.row}>
+        <Button primary label={editing ? 'Save' : 'Add'} onPress={save} />
+        {editing && <Button label="Cancel" onPress={() => start(null)} />}
+      </View>
+    </Sheet>
+  );
+}
+
+export function StashEditor({ stash, accounts, count, startAccount, onClose }: { stash: Stash | null; accounts: Account[]; count: number; startAccount?: string; onClose: () => void }) {
+  const [name, setName] = useState(stash?.name ?? '');
+  const [accountId, setAccountId] = useState(stash?.account_id ?? startAccount ?? accounts[0]?.id ?? '');
+  const [goal, setGoal] = useState(stash?.goal_centavos ? String(stash.goal_centavos / 100) : '');
+  const [amount, setAmount] = useState('');
+  const [problem, setProblem] = useState<string | null>(null);
+  async function save() {
+    if (!name.trim()) return setProblem('Give it a name, like Emergency fund.');
+    if (!accountId) return setProblem('Pick the account the money is in.');
+    const goalCentavos = goal.trim() === '' ? null : parseAmount(goal);
+    if (goal.trim() !== '' && !goalCentavos) return setProblem('Enter the goal as an amount, like 20000, or leave it empty.');
+    const start = amount.trim() === '' ? 0 : parseAmount(amount);
+    if (start === null) return setProblem('Enter an amount, like 5000, or leave it empty.');
+    const fields = { name: name.trim().slice(0, 40), account_id: accountId, goal_centavos: goalCentavos };
+    onClose();
+    await saveStash(stash ? { ...stash, ...fields } : { ...fields, amount_centavos: start, sort_order: count });
+  }
+  return (
+    <Sheet title={stash ? `Edit ${stash.name}` : 'New stash'} onClose={onClose}>
+      {!stash && <Text variant="label" muted>The money stays where it is. A stash only marks part of an account's balance as set aside, so it stops counting as spendable.</Text>}
+      <Field label="Name">
+        <TextInput accessibilityLabel="Name" style={styles.input} value={name} maxLength={40} onChangeText={setName} placeholder="Emergency fund" placeholderTextColor={colors.faint} autoFocus={!stash} />
+      </Field>
+      <Field label="Kept in"><Wrap>{accounts.map((a) => <Chip key={a.id} label={a.name} active={accountId === a.id} onPress={() => setAccountId(a.id)} />)}</Wrap></Field>
+      <Field label="Goal (₱, optional)">
+        <TextInput accessibilityLabel="Goal in pesos" style={money} keyboardType="decimal-pad" value={goal} onChangeText={setGoal} placeholder="20000" placeholderTextColor={colors.faint} />
+      </Field>
+      {!stash && (
+        <Field label="Set aside now (₱)">
+          <TextInput accessibilityLabel="Amount to set aside now in pesos" style={money} keyboardType="decimal-pad" value={amount} onChangeText={setAmount} placeholder="0" placeholderTextColor={colors.faint} />
+        </Field>
+      )}
+      <Problem text={problem} />
+      <Button primary label={stash ? 'Save' : 'Add stash'} onPress={save} />
+      {stash && (
+        <>
+          <Danger label="Delete stash" onPress={() => { onClose(); removeStash(stash); }} />
+          <Text variant="label" muted>Deleting a stash doesn't move or remove money. What was set aside counts as spendable again.</Text>
+        </>
+      )}
+    </Sheet>
+  );
+}
+
+export function StashMoveEditor({ stash, mode, free, accountName, onClose }: { stash: Stash; mode: 'in' | 'out'; free: number; accountName: string; onClose: () => void }) {
+  const [amount, setAmount] = useState('');
+  const [problem, setProblem] = useState<string | null>(null);
+  const centavos = parseAmount(amount);
+  const putting = mode === 'in';
+  async function save() {
+    if (!centavos) return setProblem('Enter an amount, like 500.');
+    if (!putting && centavos > stash.amount_centavos) return setProblem(`Only ${formatPeso(stash.amount_centavos)} is in ${stash.name}.`);
+    onClose();
+    await saveStash({ ...stash, amount_centavos: Math.max(0, stash.amount_centavos + (putting ? centavos : -centavos)) });
+  }
+  return (
+    <Sheet title={putting ? `Put money in ${stash.name}` : `Take money out of ${stash.name}`} onClose={onClose}>
+      <Text variant="label" muted>
+        {putting
+          ? `${accountName} has ${formatPeso(Math.max(0, free))} that isn't set aside yet. Nothing moves between accounts; this only marks the money as saved.`
+          : `${stash.name} has ${formatPeso(stash.amount_centavos)}. What you take out counts as spendable again.`}
+      </Text>
+      <Field label="Amount (₱)">
+        <TextInput accessibilityLabel="Amount in pesos" style={money} keyboardType="decimal-pad" value={amount} onChangeText={setAmount} placeholder="500" placeholderTextColor={colors.faint} autoFocus />
+      </Field>
+      {putting && centavos !== null && centavos > free && <Text variant="label" style={{ color: colors.amber }}>That's more than {accountName} has free. Check its balance first, or it will show as over.</Text>}
+      <Problem text={problem} />
+      <Button primary label={putting ? 'Put in' : 'Take out'} onPress={save} />
     </Sheet>
   );
 }

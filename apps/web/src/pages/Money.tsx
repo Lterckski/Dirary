@@ -1,20 +1,25 @@
-import { useMemo, useState, type FormEvent, type ReactNode } from 'react';
+import { useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties, type FormEvent, type ReactNode, type RefObject } from 'react';
 import {
-  INSTITUTIONS, INSTITUTION_LABEL, LIST_COLORS, TransactionDraft, accountBalance, budgetCoach, dayLabel, findTransferPairs, formatPeso, guessMapping,
-  localDate, monthSummary, needsReview, parseAmount, parseCsv, parseMoneyQuickAdd, recentTransactions, rowsToTransactions, spentOn,
-  type Account, type Category, type CsvMapping, type Institution, type ListColor, type Transaction,
+  INSTITUTIONS, INSTITUTION_LABEL, LIST_COLORS, TransactionDraft, accountBalance, budgetCoach, dayLabel, endOfDayBalances, moveStash, stashProgress, stashSummary, findTransferPairs, formatPeso, guessMapping,
+  dueLabel, fixedThisMonth, formatPesoShort, monthName, monthlyRecap, recapLine, localDate, monthSummary, needsReview, parseAmount, parseCsv, parseMoneyQuickAdd, recentTransactions, rowsToTransactions, safeToSpend, spendCoach,
+  type Account, type Category, type CsvMapping, type FixedExpense, type Stash, type Institution, type ListColor, type Transaction,
 } from '@dirary/shared';
-import { Mascot } from '../Mascot';
+import { confettiFrom } from '../confetti';
+import { Mascot, MascotPaws } from '../Mascot';
 import { useMoney, type MoneyStore } from '../money/useMoney';
-import { Modal, openPicker } from '../ui';
+import { DateTimePicker } from '../pickers';
+import { Modal } from '../ui';
 
+/** Who the app greets. Dirary is a one-person app. */
+const GREETING_NAME = 'Luther';
 const toLocal = (iso: string) => localDate(new Date(iso));
 const pad = (n: number) => String(n).padStart(2, '0');
 /** A Date as the value a datetime-local input expects. */
 const forInput = (d: Date) => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
 const timeOf = (iso: string) => new Date(iso).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' });
 
-type Dialog = { kind: 'tx'; tx: Transaction | null } | { kind: 'accounts' } | { kind: 'categories' } | { kind: 'transfer' } | { kind: 'import' } | null;
+type Direction = 'in' | 'out';
+type Dialog = { kind: 'tx'; tx: Transaction | null; categoryId?: string; direction?: Direction; accountId?: string } | { kind: 'fixed' } | { kind: 'budget' } | { kind: 'reset' } | { kind: 'stash'; stash: Stash | null } | { kind: 'stashMove'; stash: Stash; mode: 'in' | 'out' } | { kind: 'accounts' } | { kind: 'categories' } | { kind: 'transfer' } | { kind: 'import' } | null;
 
 export function Money() {
   const store = useMoney();
@@ -26,14 +31,83 @@ export function Money() {
   const daysInMonth = new Date(now.getFullYear(), now.getMonth() + 1, 0).getDate();
 
   const summary = useMemo(() => monthSummary(transactions, categories, month, toLocal), [transactions, categories, month]);
-  const coach = budgetCoach(summary, now.getDate(), daysInMonth);
+  const fixedSummary = useMemo(() => fixedThisMonth(store.fixed, transactions, today, toLocal), [store.fixed, transactions, today]);
+  const safe = useMemo(() => safeToSpend(store.plan, store.fixed, transactions, today, toLocal), [store.plan, store.fixed, transactions, today]);
+  // Ink speaks about today's allowance first; a category over budget takes over when there is one.
+  const budgetLine = budgetCoach(summary, now.getDate(), daysInMonth);
+  const coach = budgetLine.mood === 'worried' && safe.safeToday >= 0 ? budgetLine : spendCoach(safe, fixedSummary, formatPeso);
+  const stash = useMemo(() => stashSummary(store.stashes, accounts, transactions), [store.stashes, accounts, transactions]);
+
+  // A floating "−₱130" beside the big numbers whenever they change after the page has loaded.
+  const safeChange = useChange(loading ? null : safe.ready ? safe.safeToday : safe.spentToday);
+  const walletChange = useChange(loading ? null : stash.stashed > 0 ? stash.spendable : stash.total);
+
+  // New transactions slide in; confirmed "To review" items fold away first.
+  const fresh = useFresh(transactions.map((t) => t.id), loading);
+  const [leaving, setLeaving] = useState<Set<string>>(new Set());
+  function confirm(t: Transaction) {
+    setLeaving((cur) => new Set(cur).add(t.id));
+    window.setTimeout(() => {
+      fresh.mark(t.id);
+      store.updateTransaction(t.id, { status: 'confirmed' });
+      setLeaving((cur) => { const next = new Set(cur); next.delete(t.id); return next; });
+    }, FOLD_MS);
+  }
+
+  // Ticking a fixed expense: it shows as paid for a moment, then the payment is logged and the row glides down.
+  const [paying, setPaying] = useState<Set<string>>(new Set());
+  const payTimers = useRef(new Map<string, number>());
+  function tickFixed(item: (typeof fixedSummary.items)[number]) {
+    if (item.payment) return store.removeTransaction(item.payment.id);
+    const id = item.expense.id;
+    const drop = () => setPaying((cur) => { const next = new Set(cur); next.delete(id); return next; });
+    const timer = payTimers.current.get(id);
+    if (timer !== undefined) { window.clearTimeout(timer); payTimers.current.delete(id); return drop(); }
+    setPaying((cur) => new Set(cur).add(id));
+    payTimers.current.set(id, window.setTimeout(() => {
+      payTimers.current.delete(id);
+      store.payFixed(item.expense, accounts[0]?.id ?? null);
+      drop();
+    }, CHECKED_MS));
+  }
+  const fixedList = useRef<HTMLUListElement>(null);
+  useFlip(fixedList, [fixedSummary]);
+
+  // Small celebrations: every fixed expense paid for the month, or a stash reaching its goal.
+  const fixedCard = useRef<HTMLElement>(null);
+  const allPaid = fixedSummary.items.length > 0 && fixedSummary.paid === fixedSummary.total;
+  const reached = stash.stashes.filter((s) => stashProgress(s) === 100).map((s) => s.id).join(',');
+  const seen = useRef<{ allPaid: boolean; reached: Set<string> } | null>(null);
+  useEffect(() => {
+    if (loading) return;
+    const now = new Set(reached ? reached.split(',') : []);
+    const was = seen.current;
+    seen.current = { allPaid, reached: now };
+    if (!was) return;
+    if (allPaid && !was.allPaid) confettiFrom(fixedCard.current, { amount: 0.5 });
+    for (const id of now) if (!was.reached.has(id)) confettiFrom(document.querySelector(`[data-stash="${id}"] .stash-bar`), { amount: 0.6 });
+  }, [loading, allPaid, reached]);
+  const safePct = safe.dailyLimit === 0 ? (safe.spentToday > 0 ? 100 : 0) : Math.min(100, Math.round((safe.spentToday / safe.dailyLimit) * 100));
+  const shortcuts = categories.filter((c) => c.kind === 'expense').slice(0, 4);
+  const recap = useMemo(() => monthlyRecap(transactions, today, toLocal), [transactions, today]);
+
+  // The floating + button asks the current screen to start adding.
+  useEffect(() => {
+    const open = () => setDialog({ kind: 'tx', tx: null });
+    window.addEventListener('dirary:add', open);
+    return () => window.removeEventListener('dirary:add', open);
+  }, []);
   const inbox = useMemo(() => needsReview(transactions), [transactions]);
   const pairs = useMemo(() => findTransferPairs(inbox), [inbox]);
   const paired = new Set(pairs.flatMap((p) => [p.out.id, p.into.id]));
-  const recent = useMemo(() => recentTransactions(transactions, 60), [transactions]);
+  // Tapping an account card shows only that account's transactions, with its balance at the end of each day.
+  const [only, setOnly] = useState<string | null>(null);
+  const shown = accounts.find((a) => a.id === only) ?? null;
+  const recent = useMemo(() => recentTransactions(shown ? transactions.filter((t) => t.account_id === shown.id) : transactions, shown ? 300 : 60), [transactions, shown]);
+  const dayBalances = useMemo(() => (shown ? endOfDayBalances(shown, transactions, toLocal) : null), [shown, transactions]);
+  const showLedger = () => document.getElementById('ledger')?.scrollIntoView({ block: 'start', behavior: 'smooth' });
   const accountById = useMemo(() => new Map(accounts.map((a) => [a.id, a])), [accounts]);
   const categoryById = useMemo(() => new Map(categories.map((c) => [c.id, c])), [categories]);
-  const budgetPct = summary.budgeted === 0 ? 0 : Math.min(100, Math.round((summary.budgetSpent / summary.budgeted) * 100));
 
   const days: { date: string; rows: Transaction[] }[] = [];
   for (const t of recent) {
@@ -44,19 +118,20 @@ export function Money() {
   }
 
   const row = (t: Transaction, actions?: ReactNode) => (
-    <TxRow key={t.id} tx={t} account={t.account_id ? accountById.get(t.account_id) : undefined} category={t.category_id ? categoryById.get(t.category_id) : undefined} onOpen={() => setDialog({ kind: 'tx', tx: t })} actions={actions} />
+    <TxRow key={t.id} tx={t} account={t.account_id ? accountById.get(t.account_id) : undefined} category={t.category_id ? categoryById.get(t.category_id) : undefined}
+      leaving={leaving.has(t.id)} fresh={fresh.has(t.id)} onOpen={() => setDialog({ kind: 'tx', tx: t })} actions={actions} />
   );
 
   const firstUse = !loading && accounts.length === 0 && categories.length === 0;
 
   return (
-    <div className="page">
-      <div className="page-head">
+    <div className="page money">
+      <header className="hero">
         <div>
-          <p className="eyebrow">{now.toLocaleDateString('en-US', { month: 'long', year: 'numeric' })}</p>
-          <h1 className="display">Money</h1>
+          <p className="hero-date">{now.toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' })}</p>
+          <h1 className="display">Hello, {GREETING_NAME}!</h1>
         </div>
-      </div>
+      </header>
 
       {error && <p className="note error" role="alert">{error}</p>}
       {loading && <p className="muted" role="status">Loading your money…</p>}
@@ -70,18 +145,34 @@ export function Money() {
       )}
 
       {!loading && !firstUse && (
-        <>
-          <section className="card progress" aria-label="This month">
-            <div className="row" style={{ justifyContent: 'space-between', alignItems: 'baseline' }}>
-              <p className="display progress-count">{formatPeso(summary.spent)}<span> spent</span></p>
-              <p className="muted money-in">{formatPeso(summary.income, { sign: true })} in · {formatPeso(spentOn(transactions, today, toLocal))} today</p>
+        // Two columns on wide screens: today's money on the left, the month on the right. One column on phones, in the same order.
+        <div className="money-cols">
+          <div className="money-col">
+          {/* Ink stands behind the first card with his front paws over its edge. */}
+          <div className="peek">
+          <span className="peek-ink" aria-hidden="true"><Mascot mood={coach.mood} size={96} /></span>
+          <section className="card safe" aria-labelledby="safe-title">
+            <span className="peek-paws" aria-hidden="true"><MascotPaws size={96} /></span>
+            <div className="row" style={{ justifyContent: 'space-between' }}>
+              <h2 id="safe-title" className="card-label">Safe to spend today</h2>
+              <button type="button" className="round-btn" aria-label="Set monthly budget" onClick={() => setDialog({ kind: 'budget' })}>
+                <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 20h4L19 9l-4-4L4 16v4z" /></svg>
+              </button>
             </div>
-            {summary.budgeted > 0 && (
+            {safe.ready ? (
               <>
-                <div className={budgetPct >= 100 ? 'bar over' : 'bar'} role="progressbar" aria-valuemin={0} aria-valuemax={100} aria-valuenow={budgetPct} aria-label="Budget used this month">
-                  <div style={{ width: `${budgetPct}%` }} />
+                <p className={safe.safeToday < 0 ? 'display safe-amount late' : 'display safe-amount'}><Figure value={safe.safeToday} change={safeChange} /></p>
+                <p className="muted">of {formatPeso(safe.dailyLimit)} daily limit</p>
+                <div className={safe.safeToday < 0 ? 'bar over' : 'bar'} role="progressbar" aria-valuemin={0} aria-valuemax={100} aria-valuenow={safePct} aria-label="Today's limit used">
+                  <div style={{ width: `${safePct}%` }} />
                 </div>
-                <p className="note muted">{formatPeso(summary.budgetSpent)} of {formatPeso(summary.budgeted)} budgeted</p>
+                <div className="row safe-foot"><strong>Today spent: {formatPeso(safe.spentToday)}</strong><span className="muted">{safe.daysLeft} day{safe.daysLeft === 1 ? '' : 's'} left · {formatPeso(safe.leftThisMonth)} for the month</span></div>
+              </>
+            ) : (
+              <>
+                <p className="display safe-amount"><Figure value={safe.spentToday} change={safeChange} /></p>
+                <p className="muted">spent today</p>
+                <button type="button" className="btn primary" style={{ alignSelf: 'flex-start' }} onClick={() => setDialog({ kind: 'budget' })}>Set a monthly budget</button>
               </>
             )}
             <div className="coach">
@@ -89,26 +180,130 @@ export function Money() {
               <p aria-live="polite">{coach.line}</p>
             </div>
           </section>
+          </div>
 
-          <QuickAdd store={store} onMore={() => setDialog({ kind: 'tx', tx: null })} />
-
-          <section className="group" aria-labelledby="accounts-title">
-            <div className="group-bar" style={{ marginBottom: 0 }}>
-              <h2 id="accounts-title" className="group-title">Accounts</h2>
-              <div className="row" style={{ gap: 8 }}>
-                <button type="button" className="chip ghost" onClick={() => setDialog({ kind: 'transfer' })} disabled={accounts.length < 2}>Transfer</button>
-                <button type="button" className="chip ghost" onClick={() => setDialog({ kind: 'import' })} disabled={accounts.length === 0}>Import statement</button>
-                <button type="button" className="chip ghost" onClick={() => setDialog({ kind: 'accounts' })}>Edit accounts</button>
+          <section className="wallet" aria-labelledby="wallet-title">
+            <ul className={shown ? 'wallet-cards filtering' : 'wallet-cards'} aria-label="Accounts. Tap one to see only its transactions">
+              {accounts.map((a) => (
+                <li key={a.id}>
+                  <button type="button" className={`wallet-card ${a.institution}`} aria-pressed={only === a.id} onClick={() => setOnly((cur) => (cur === a.id ? null : a.id))}
+                    aria-label={`${a.name}, ${formatPeso(accountBalance(a, transactions))}. Show only ${a.name} transactions`}>
+                    <span className="wallet-card-name">{a.name}</span>
+                    <span className="wallet-card-balance">{formatPeso(accountBalance(a, transactions))}</span>
+                    {(stash.byAccount.get(a.id)?.stashed ?? 0) > 0 && <span className="wallet-card-stash">{formatPeso(stash.byAccount.get(a.id)!.stashed)} stashed</span>}
+                  </button>
+                </li>
+              ))}
+            </ul>
+            <div className="wallet-front">
+              <span className="wallet-ink" aria-hidden="true"><Mascot mood="happy" size={132} /></span>
+              <h2 id="wallet-title" className="card-label">{stash.stashed > 0 ? 'Spendable' : 'Balance'}</h2>
+              <p className="display wallet-total"><Figure value={stash.stashed > 0 ? stash.spendable : stash.total} change={walletChange} /></p>
+              {stash.stashed > 0 && <p className="wallet-sub">{formatPeso(stash.stashed)} in stashes · {formatPeso(stash.total)} in total</p>}
+              {shown && (
+                <p className="wallet-filter" role="status">
+                  Showing <strong>{shown.name}</strong> only.
+                  <button type="button" className="link" onClick={showLedger}>See its transactions</button>
+                  <button type="button" className="link" onClick={() => setOnly(null)}>Show all</button>
+                </p>
+              )}
+              <div className="row wallet-actions">
+                <button type="button" className="chip add-money" onClick={() => setDialog({ kind: 'tx', tx: null, direction: 'in', accountId: shown?.id })} disabled={accounts.length === 0}>{shown ? `+ Add money to ${shown.name}` : '+ Add money'}</button>
+                <button type="button" className="chip" onClick={() => setDialog({ kind: 'transfer' })} disabled={accounts.length < 2}>Transfer</button>
+                <button type="button" className="chip" onClick={() => setDialog({ kind: 'accounts' })}>Accounts</button>
+                <button type="button" className="chip" onClick={() => setDialog({ kind: 'import' })} disabled={accounts.length === 0}>Import statement</button>
               </div>
             </div>
-            <div className="accounts">
-              {accounts.map((a) => (
-                <div key={a.id} className="account">
-                  <span className="task-meta">{a.name}</span>
-                  <span className="display account-balance">{formatPeso(accountBalance(a, transactions))}</span>
-                </div>
+          </section>
+
+          <section className="card stashes" aria-labelledby="stashes-title">
+            <div className="row" style={{ justifyContent: 'space-between' }}>
+              <h2 id="stashes-title" className="card-label">Stashes</h2>
+              <span className="row" style={{ gap: 8 }}>
+                {stash.stashed > 0 && <span className="muted note amount-note">{formatPeso(stash.stashed)} set aside</span>}
+                {store.stashesReady && <button type="button" className="chip ghost" onClick={() => setDialog({ kind: 'stash', stash: null })} disabled={accounts.length === 0}>Add</button>}
+              </span>
+            </div>
+            {!store.stashesReady ? (
+              <p className="note muted">Run the stashes SQL file in Supabase (20261120000000_phase2_stashes.sql), then reload.</p>
+            ) : stash.stashes.length === 0 ? (
+              <p className="muted">Set money aside for an emergency fund, tuition or anything else. It stays in its account but stops counting as spendable.</p>
+            ) : (
+              <ul className="stash-list">
+                {stash.stashes.map((s) => {
+                  const pct = stashProgress(s);
+                  return (
+                    <li key={s.id} className="stash" data-stash={s.id}>
+                      <button type="button" className="stash-main" onClick={() => setDialog({ kind: 'stash', stash: s })} aria-label={`Edit ${s.name}`}>
+                        <span className="task-title">{s.name}</span>
+                        <span className="task-meta">{accountById.get(s.account_id)?.name}{s.goal_centavos ? ` · goal ${formatPeso(s.goal_centavos)}` : ''}</span>
+                      </button>
+                      <span className="amount">{formatPeso(s.amount_centavos)}</span>
+                      {pct !== null && (
+                        <div className="bar thin stash-bar" role="progressbar" aria-valuemin={0} aria-valuemax={100} aria-valuenow={pct} aria-label={`${s.name}: ${pct}% of goal`}>
+                          <div style={{ width: `${pct}%` }} />
+                        </div>
+                      )}
+                      <div className="stash-actions">
+                        <button type="button" className="chip" onClick={() => setDialog({ kind: 'stashMove', stash: s, mode: 'in' })}>Put in</button>
+                        <button type="button" className="chip" onClick={() => setDialog({ kind: 'stashMove', stash: s, mode: 'out' })} disabled={s.amount_centavos === 0}>Take out</button>
+                      </div>
+                    </li>
+                  );
+                })}
+              </ul>
+            )}
+            {stash.overdrawn.length > 0 && (
+              <p className="note warn" role="alert">
+                More is set aside in {stash.overdrawn.map((a) => a.name).join(' and ')} than {stash.overdrawn.length === 1 ? 'it holds' : 'they hold'}. Take some out of a stash, or check that balance.
+              </p>
+            )}
+          </section>
+
+          {shortcuts.length > 0 && (
+            <div className="tiles" role="group" aria-label="Quick add by category">
+              {shortcuts.map((c) => (
+                <button key={c.id} type="button" className="tile" onClick={() => setDialog({ kind: 'tx', tx: null, categoryId: c.id })}>
+                  <span className="tile-dot" style={{ background: `var(--${c.color})` }} aria-hidden="true">{c.name.charAt(0)}</span>
+                  <span className="tile-name">{c.name}</span>
+                </button>
               ))}
             </div>
+          )}
+
+          <QuickAdd store={store} onMore={(direction) => setDialog({ kind: 'tx', tx: null, direction })} />
+
+          </div>
+          <div className="money-col">
+          <section ref={fixedCard} className="card fixed-card" aria-labelledby="fixed-title">
+            <div className="row" style={{ justifyContent: 'space-between' }}>
+              <h2 id="fixed-title" className="card-label">Fixed this month</h2>
+              <span className="row" style={{ gap: 8 }}>
+                {fixedSummary.items.length > 0 && <span className="muted note amount-note">{formatPeso(fixedSummary.paid)} of {formatPeso(fixedSummary.total)} paid</span>}
+                <button type="button" className="chip ghost" onClick={() => setDialog({ kind: 'fixed' })}>{fixedSummary.items.length > 0 ? 'Edit' : 'Add'}</button>
+              </span>
+            </div>
+            {fixedSummary.items.length === 0 ? (
+              <p className="muted">Add what you pay every month, like rent, internet or a subscription. Dirary sets that money aside before working out what's safe to spend.</p>
+            ) : (
+              <ul ref={fixedList} className="fixed-list">
+                {fixedSummary.items.map((item) => ({ ...item, paid: item.paid || paying.has(item.expense.id) })).map((i) => (
+                  <li key={i.expense.id} data-flip={i.expense.id} className={i.paid ? 'fixed done' : 'fixed'}>
+                    <button
+                      type="button" role="checkbox" aria-checked={i.paid} className={i.paid || i.dueIn > 3 ? 'check' : i.dueIn < 0 ? 'check p3' : 'check p2'}
+                      aria-label={`${i.expense.name}, ${formatPeso(i.expense.amount_centavos)}, mark ${i.paid ? 'not paid' : 'paid'}`}
+                      onClick={() => tickFixed(i)}>
+                      <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M3 8.5 6.5 12 13 4.5" pathLength={1} /></svg>
+                    </button>
+                    <span className="grow fixed-main">
+                      <span className="task-title">{i.expense.name}</span>
+                      {!i.paid && <span className={i.dueIn < 0 ? 'task-meta late' : i.dueIn <= 3 ? 'task-meta soon' : 'task-meta'}>{dueLabel(i)}</span>}
+                    </span>
+                    <span className="amount">{formatPeso(i.expense.amount_centavos)}</span>
+                  </li>
+                ))}
+              </ul>
+            )}
           </section>
 
           {inbox.length > 0 && (
@@ -126,7 +321,7 @@ export function Money() {
                   </li>
                 ))}
                 {inbox.filter((t) => !paired.has(t.id)).map((t) => row(t, (
-                  <button type="button" className="btn primary small" onClick={() => store.updateTransaction(t.id, { status: 'confirmed' })} aria-label={`Confirm ${t.merchant ?? 'transaction'} ${formatPeso(t.amount_centavos)}`}>Confirm</button>
+                  <button type="button" className="btn primary small" onClick={() => confirm(t)} disabled={leaving.has(t.id)} aria-label={`Confirm ${t.merchant ?? 'transaction'} ${formatPeso(t.amount_centavos)}`}>Confirm</button>
                 )))}
               </ul>
             </section>
@@ -172,21 +367,45 @@ export function Money() {
             )}
           </section>
 
-          <section className="group" aria-label="Recent transactions">
-            {days.length === 0 ? (
-              <section className="card empty"><Mascot mood="sleepy" size={128} /><p className="muted">No transactions yet. Add one above, like “250 jollibee #food @gcash”.</p></section>
+          <Recap months={recap} />
+
+          <section className="group ledger" id="ledger" aria-label={shown ? `${shown.name} transactions` : 'Recent transactions'}>
+            {shown && (
+              <div className="group-bar ledger-head">
+                <h2 className="group-title">{shown.name} · {formatPeso(accountBalance(shown, transactions))} now</h2>
+                <button type="button" className="chip ghost" onClick={() => setOnly(null)}>Show all accounts</button>
+              </div>
+            )}
+            {shown && days.length === 0 ? (
+              <p className="note muted">No transactions in {shown.name} yet. Its balance is the opening balance, {formatPeso(shown.opening_balance_centavos)}.</p>
+            ) : days.length === 0 ? (
+              <section className="card empty">
+                <Mascot mood="sleepy" size={128} />
+                {/* The quick-add box sits above this list on phones and in the other column on wide screens, so point at it with a button, not a direction. */}
+                <p className="muted">No transactions yet. Type one in the quick-add box, like “250 jollibee #food @gcash”.</p>
+                <button type="button" className="btn primary" onClick={() => { const box = document.getElementById('money-quick'); box?.scrollIntoView({ block: 'center', behavior: 'smooth' }); box?.focus({ preventScroll: true }); }}>Add your first one</button>
+              </section>
             ) : days.map((d) => (
               <div key={d.date} className="group">
-                <h2 className="group-title">{dayLabel(d.date, today)}</h2>
+                <h2 className="group-title day-head">
+                  {dayLabel(d.date, today)}
+                  {dayBalances?.has(d.date) && <span className="day-balance">{formatPeso(dayBalances.get(d.date)!)} at end of day</span>}
+                </h2>
                 <ul className="tasks">{d.rows.map((t) => row(t))}</ul>
               </div>
             ))}
           </section>
-        </>
+          </div>
+        </div>
       )}
 
-      {dialog?.kind === 'tx' && <TxDialog tx={dialog.tx} store={store} onClose={() => setDialog(null)} />}
-      {dialog?.kind === 'accounts' && <AccountsDialog store={store} onClose={() => setDialog(null)} />}
+      {dialog?.kind === 'tx' && <TxDialog tx={dialog.tx} categoryId={dialog.categoryId} direction={dialog.direction} accountId={dialog.accountId} store={store} onTransfer={accounts.length > 1 ? () => setDialog({ kind: 'transfer' }) : undefined} onClose={() => setDialog(null)} />}
+      {dialog?.kind === 'fixed' && <FixedDialog store={store} onClose={() => setDialog(null)} />}
+      {dialog?.kind === 'budget' && <BudgetDialog store={store} fixedTotal={fixedSummary.total} onClose={() => setDialog(null)} />}
+      {dialog?.kind === 'accounts' && <AccountsDialog store={store} onReset={() => setDialog({ kind: 'reset' })} onClose={() => setDialog(null)} />}
+      {dialog?.kind === 'reset' && <ResetDialog store={store} onClose={() => setDialog(null)} />}
+      {dialog?.kind === 'stash' && <StashDialog stash={dialog.stash} store={store} startAccount={shown?.id} onClose={() => setDialog(null)} />}
+      {dialog?.kind === 'stashMove' && <StashMoveDialog stash={dialog.stash} mode={dialog.mode} free={stash.byAccount.get(dialog.stash.account_id)?.free ?? 0} accountName={accountById.get(dialog.stash.account_id)?.name ?? 'the account'} store={store} onClose={() => setDialog(null)} />}
       {dialog?.kind === 'categories' && <CategoriesDialog store={store} onClose={() => setDialog(null)} />}
       {dialog?.kind === 'transfer' && <TransferDialog store={store} onClose={() => setDialog(null)} />}
       {dialog?.kind === 'import' && <ImportDialog store={store} onClose={() => setDialog(null)} />}
@@ -194,12 +413,16 @@ export function Money() {
   );
 }
 
-function TxRow({ tx, account, category, onOpen, actions }: { tx: Transaction; account?: Account; category?: Category; onOpen: () => void; actions?: ReactNode }) {
+function TxRow({ tx, account, category, leaving, fresh, onOpen, actions }: {
+  tx: Transaction; account?: Account; category?: Category; leaving?: boolean; fresh?: boolean; onOpen: () => void; actions?: ReactNode;
+}) {
+  const ref = useRef<HTMLLIElement>(null);
+  useFold(ref, !!leaving);
   const transfer = tx.transfer_group_id !== null;
   const title = transfer ? 'Transfer' : tx.merchant ?? category?.name ?? (tx.direction === 'in' ? 'Money in' : 'Spending');
   const meta = [account?.name, transfer ? null : category?.name, timeOf(tx.occurred_at), tx.source === 'notification' ? 'Auto-logged' : tx.source === 'import' ? 'Imported' : null].filter(Boolean).join(' · ');
   return (
-    <li className="task tx">
+    <li ref={ref} className={fresh ? 'task tx fresh' : 'task tx'}>
       <button type="button" className="task-main" onClick={onOpen} aria-label={`Edit ${title}, ${formatPeso(tx.amount_centavos)}`}>
         <span className="task-title">{title}</span>
         <span className="task-meta">{meta}</span>
@@ -210,11 +433,19 @@ function TxRow({ tx, account, category, onOpen, actions }: { tx: Transaction; ac
   );
 }
 
-function QuickAdd({ store, onMore }: { store: MoneyStore; onMore: () => void }) {
+function QuickAdd({ store, onMore }: { store: MoneyStore; onMore: (direction: Direction) => void }) {
   const [text, setText] = useState('');
-  const read = parseMoneyQuickAdd(text, store.categories, store.accounts);
+  const [mode, setMode] = useState<Direction>('out');
+  const read = parseMoneyQuickAdd(text, store.categories, store.accounts, mode);
   const account = store.accounts.find((a) => a.id === read.account_id) ?? store.accounts[0];
   const category = store.categories.find((c) => c.id === read.category_id);
+  const incoming = read.direction === 'in';
+  function pick(next: Direction) {
+    setMode(next);
+    // A typed + means money in; switching to Spent takes it out so the switch and the text agree.
+    if (next === 'out') setText((t) => t.replace(/(^|\s)\+(?=\s*(?:₱|php)?\s*\d)/i, '$1'));
+    document.getElementById('money-quick')?.focus();
+  }
   function submit(event: FormEvent) {
     event.preventDefault();
     if (!read.amount_centavos || !account) return;
@@ -223,26 +454,35 @@ function QuickAdd({ store, onMore }: { store: MoneyStore; onMore: () => void }) 
   }
   return (
     <form className="quick" onSubmit={submit}>
-      <label className="sr-only" htmlFor="money-quick">New transaction</label>
-      <input id="money-quick" className="input grow" value={text} maxLength={160} autoComplete="off" placeholder="250 jollibee #food @gcash" onChange={(e) => setText(e.target.value)} aria-describedby="money-hint" />
-      <button type="button" className="btn" onClick={onMore}>More options</button>
-      <button type="submit" className="btn primary" disabled={!read.amount_centavos || !account}>Add</button>
+      <div className="segmented quick-mode slide-switch" role="group" aria-label="Money out or in" style={{ '--n': 2, '--i': incoming ? 1 : 0 } as CSSProperties}>
+        <button type="button" aria-pressed={!incoming} onClick={() => pick('out')}>Spent</button>
+        <button type="button" aria-pressed={incoming} onClick={() => pick('in')}>Received</button>
+      </div>
+      <label className="sr-only" htmlFor="money-quick">{incoming ? 'New money in' : 'New spending'}</label>
+      <input id="money-quick" className="input grow" value={text} maxLength={160} autoComplete="off"
+        placeholder={incoming ? '5000 allowance @gotyme' : '250 jollibee #food @gcash'} onChange={(e) => setText(e.target.value)} aria-describedby="money-hint" />
+      <button type="button" className="btn" onClick={() => onMore(read.direction)}>More options</button>
+      <button type="submit" className="btn primary" disabled={!read.amount_centavos || !account}>{incoming ? 'Add money in' : 'Add expense'}</button>
       <p id="money-hint" className="quick-hint" aria-live="polite">
         {read.amount_centavos && account
-          ? <>Adds <strong>{formatPeso(read.direction === 'in' ? read.amount_centavos : -read.amount_centavos, { sign: true })}</strong>{read.merchant ? ` · ${read.merchant}` : ''} · <strong>{category?.name ?? 'no category'}</strong> · {account.name}</>
-          : 'Type an amount, what it was, then #category and @account. Start with + for money in.'}
+          ? <>{incoming ? 'Adds' : 'Takes'} <strong className={incoming ? 'in' : undefined}>{formatPeso(incoming ? read.amount_centavos : -read.amount_centavos, { sign: true })}</strong> {incoming ? 'to' : 'from'} {account.name}{read.merchant ? ` · ${read.merchant}` : ''} · <strong>{category?.name ?? 'no category'}</strong></>
+          : incoming
+            ? 'Type the amount and where it came from, then @account. Example: 5000 allowance @gotyme.'
+            : 'Type an amount, what it was, then #category and @account.'}
       </p>
     </form>
   );
 }
 
-function TxDialog({ tx, store, onClose }: { tx: Transaction | null; store: MoneyStore; onClose: () => void }) {
-  const [amount, setAmount] = useState(tx ? String(tx.amount_centavos / 100) : '');
-  const [direction, setDirection] = useState<'in' | 'out'>(tx?.direction ?? 'out');
-  const [accountId, setAccountId] = useState(tx?.account_id ?? store.accounts[0]?.id ?? '');
-  const [categoryId, setCategoryId] = useState(tx?.category_id ?? '');
+export function TxDialog({ tx, categoryId: startCategory, direction: startDirection, accountId: startAccount, amount: startAmount, note: startNote, store, onTransfer, onClose }: {
+  tx: Transaction | null; categoryId?: string; direction?: Direction; accountId?: string; amount?: number; note?: string; store: MoneyStore; onTransfer?: () => void; onClose: () => void;
+}) {
+  const [amount, setAmount] = useState(tx ? String(tx.amount_centavos / 100) : startAmount ? String(startAmount / 100) : '');
+  const [direction, setDirection] = useState<Direction>(tx?.direction ?? startDirection ?? 'out');
+  const [accountId, setAccountId] = useState(tx?.account_id ?? startAccount ?? store.accounts[0]?.id ?? '');
+  const [categoryId, setCategoryId] = useState(tx?.category_id ?? startCategory ?? '');
   const [merchant, setMerchant] = useState(tx?.merchant ?? '');
-  const [note, setNote] = useState(tx?.note ?? '');
+  const [note, setNote] = useState(tx?.note ?? startNote ?? '');
   const [when, setWhen] = useState(forInput(tx ? new Date(tx.occurred_at) : new Date()));
   const [problem, setProblem] = useState<string | null>(null);
   const options = store.categories.filter((c) => c.kind === (direction === 'in' ? 'income' : 'expense'));
@@ -264,41 +504,40 @@ function TxDialog({ tx, store, onClose }: { tx: Transaction | null; store: Money
   }
 
   return (
-    <Modal title={tx ? (tx.status === 'needs_review' ? 'Review transaction' : 'Edit transaction') : 'Add transaction'} onClose={onClose}>
+    <Modal title={tx ? (tx.status === 'needs_review' ? 'Review transaction' : 'Edit transaction') : direction === 'in' ? 'Add money in' : 'Add expense'} onClose={onClose}>
       <form className="form" onSubmit={submit}>
         {isTransfer && <p className="note muted">This is one half of a transfer between your accounts. It doesn't count as spending or income.</p>}
+        {!isTransfer && (
+          <div className="segmented kind-switch slide-switch" role="group" aria-label="What kind of transaction" style={{ '--n': !tx && onTransfer ? 3 : 2, '--i': direction === 'in' ? 1 : 0 } as CSSProperties}>
+            <button type="button" aria-pressed={direction === 'out'} onClick={() => setDirection('out')}>Spent</button>
+            <button type="button" aria-pressed={direction === 'in'} onClick={() => setDirection('in')}>Received</button>
+            {!tx && onTransfer && <button type="button" aria-pressed={false} onClick={onTransfer}>Transfer</button>}
+          </div>
+        )}
+        {direction === 'in' && !tx && <p className="note muted">Money that came into one of your accounts, like allowance, pay or a refund. It raises that account's balance.</p>}
         <div className="two">
           <label className="field">Amount (₱)
-            <input className="input" inputMode="decimal" value={amount} onChange={(e) => setAmount(e.target.value)} autoFocus placeholder="250" />
+            <input className="input" inputMode="decimal" value={amount} onChange={(e) => setAmount(e.target.value)} data-autofocus placeholder={direction === 'in' ? '5000' : '250'} />
           </label>
-          <fieldset className="field toggle">
-            <legend>Type</legend>
-            <div className="segmented">
-              <button type="button" aria-pressed={direction === 'out'} onClick={() => setDirection('out')}>Money out</button>
-              <button type="button" aria-pressed={direction === 'in'} onClick={() => setDirection('in')}>Money in</button>
-            </div>
-          </fieldset>
-        </div>
-        <div className="two">
-          <label className="field">Account
+          <label className="field">{direction === 'in' ? 'Into' : 'Paid from'}
             <select className="input" value={accountId} onChange={(e) => setAccountId(e.target.value)}>
               {!accountId && <option value="">Pick an account</option>}
               {store.accounts.map((a) => <option key={a.id} value={a.id}>{a.name}</option>)}
             </select>
           </label>
+        </div>
+        <div className="two">
           <label className="field">Category
             <select className="input" value={options.some((c) => c.id === categoryId) ? categoryId : ''} onChange={(e) => setCategoryId(e.target.value)} disabled={isTransfer}>
               <option value="">No category</option>
               {options.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
             </select>
           </label>
+          <label className="field">{direction === 'in' ? 'From' : 'Paid to'}
+            <input className="input" value={merchant} maxLength={120} placeholder={direction === 'in' ? 'Mama, work, refund' : 'Jollibee'} onChange={(e) => setMerchant(e.target.value)} />
+          </label>
         </div>
-        <label className="field">{direction === 'in' ? 'From' : 'Paid to'}
-          <input className="input" value={merchant} maxLength={120} onChange={(e) => setMerchant(e.target.value)} />
-        </label>
-        <label className="field">When
-          <input className="input" type="datetime-local" value={when} onClick={openPicker} onChange={(e) => setWhen(e.target.value)} required />
-        </label>
+        <DateTimePicker label="When" value={when} onChange={setWhen} />
         <label className="field">Note
           <input className="input" value={note} maxLength={500} onChange={(e) => setNote(e.target.value)} />
         </label>
@@ -307,14 +546,14 @@ function TxDialog({ tx, store, onClose }: { tx: Transaction | null; store: Money
           {tx && <button type="button" className="btn danger" onClick={() => { store.removeTransaction(tx.id); onClose(); }}>Delete</button>}
           <span className="grow" />
           <button type="button" className="btn" onClick={onClose}>Cancel</button>
-          <button type="submit" className="btn primary">{tx?.status === 'needs_review' ? 'Confirm' : 'Save'}</button>
+          <button type="submit" className="btn primary">{tx?.status === 'needs_review' ? 'Confirm' : tx ? 'Save' : direction === 'in' ? 'Add money in' : 'Add expense'}</button>
         </div>
       </form>
     </Modal>
   );
 }
 
-function AccountsDialog({ store, onClose }: { store: MoneyStore; onClose: () => void }) {
+function AccountsDialog({ store, onReset, onClose }: { store: MoneyStore; onReset: () => void; onClose: () => void }) {
   const [name, setName] = useState('');
   const [institution, setInstitution] = useState<Institution>('other');
   const [opening, setOpening] = useState('');
@@ -353,6 +592,47 @@ function AccountsDialog({ store, onClose }: { store: MoneyStore; onClose: () => 
           <input className="input" inputMode="decimal" value={opening} placeholder="0" onChange={(e) => setOpening(e.target.value)} />
         </label>
         <div className="actions"><span className="grow" /><button type="button" className="btn" onClick={onClose}>Done</button><button type="submit" className="btn primary" disabled={!name.trim()}>Add account</button></div>
+      </form>
+      <div className="danger-zone">
+        <div>
+          <strong>Start over from ₱0</strong>
+          <p className="note muted">Deletes every transaction and sets every account to ₱0. Asks for your password first.</p>
+        </div>
+        <button type="button" className="btn danger" onClick={onReset}>Reset money to ₱0</button>
+      </div>
+    </Modal>
+  );
+}
+
+function ResetDialog({ store, onClose }: { store: MoneyStore; onClose: () => void }) {
+  const [password, setPassword] = useState('');
+  const [busy, setBusy] = useState(false);
+  const [problem, setProblem] = useState<string | null>(null);
+  const count = store.transactions.length;
+  async function submit(event: FormEvent) {
+    event.preventDefault();
+    if (!password || busy) return;
+    setBusy(true);
+    setProblem(null);
+    const failure = await store.resetMoney(password);
+    setBusy(false);
+    if (failure) { setProblem(failure); setPassword(''); return; }
+    onClose();
+  }
+  return (
+    <Modal title="Reset money to ₱0" onClose={onClose}>
+      <form className="form" onSubmit={submit}>
+        <p>This deletes {count === 1 ? 'your 1 transaction' : `all ${count.toLocaleString('en-US')} transactions`}, including ones waiting to be reviewed, and sets every account's balance to ₱0. It can't be undone.</p>
+        <p className="note muted">Your accounts, categories, fixed expenses, monthly budget and stashes stay. Stashes are emptied to ₱0.</p>
+        <label className="field">Your password
+          <input className="input" type="password" autoComplete="current-password" value={password} onChange={(e) => setPassword(e.target.value)} data-autofocus />
+        </label>
+        {problem && <p className="note error" role="alert">{problem}</p>}
+        <div className="actions">
+          <span className="grow" />
+          <button type="button" className="btn" onClick={onClose}>Cancel</button>
+          <button type="submit" className="btn danger solid" disabled={!password || busy}>{busy ? 'Resetting…' : 'Reset to ₱0'}</button>
+        </div>
       </form>
     </Modal>
   );
@@ -446,10 +726,8 @@ function TransferDialog({ store, onClose }: { store: MoneyStore; onClose: () => 
           <label className="field">Amount (₱)
             <input className="input" inputMode="decimal" value={amount} onChange={(e) => setAmount(e.target.value)} autoFocus />
           </label>
-          <label className="field">When
-            <input className="input" type="datetime-local" value={when} onClick={openPicker} onChange={(e) => setWhen(e.target.value)} required />
-          </label>
         </div>
+        <DateTimePicker label="When" value={when} onChange={setWhen} />
         {problem && <p className="note error" role="alert">{problem}</p>}
         <div className="actions"><span className="grow" /><button type="button" className="btn" onClick={onClose}>Cancel</button><button type="submit" className="btn primary">Transfer</button></div>
       </form>
@@ -526,4 +804,299 @@ function ImportDialog({ store, onClose }: { store: MoneyStore; onClose: () => vo
       </div>
     </Modal>
   );
+}
+
+function BudgetDialog({ store, fixedTotal, onClose }: { store: MoneyStore; fixedTotal: number; onClose: () => void }) {
+  const [amount, setAmount] = useState(store.plan?.monthly_budget_centavos ? String(store.plan.monthly_budget_centavos / 100) : '');
+  const [problem, setProblem] = useState<string | null>(null);
+  const centavos = parseAmount(amount);
+  function submit(event: FormEvent) {
+    event.preventDefault();
+    if (amount.trim() === '') { store.setMonthlyBudget(null); return onClose(); }
+    if (!centavos) return setProblem('Enter an amount, like 15000.');
+    store.setMonthlyBudget(centavos);
+    onClose();
+  }
+  return (
+    <Modal title="Monthly budget" onClose={onClose}>
+      <form className="form" onSubmit={submit}>
+        <p className="note muted">How much you allow yourself to spend in a month, fixed expenses included. Dirary sets your fixed expenses aside, subtracts what you've spent, and spreads the rest over the days left. That's your daily limit.</p>
+        <label className="field">Monthly budget (₱)
+          <input className="input" inputMode="decimal" value={amount} placeholder="15000" onChange={(e) => setAmount(e.target.value)} data-autofocus />
+        </label>
+        {centavos !== null && fixedTotal > 0 && <p className="note muted">{formatPeso(fixedTotal)} of it is fixed expenses, leaving {formatPeso(centavos - fixedTotal)} for everyday spending.</p>}
+        {problem && <p className="note error" role="alert">{problem}</p>}
+        <div className="actions"><span className="grow" /><button type="button" className="btn" onClick={onClose}>Cancel</button><button type="submit" className="btn primary">Save</button></div>
+      </form>
+    </Modal>
+  );
+}
+
+function FixedDialog({ store, onClose }: { store: MoneyStore; onClose: () => void }) {
+  const [name, setName] = useState('');
+  const [amount, setAmount] = useState('');
+  const [dueDay, setDueDay] = useState('1');
+  const [categoryId, setCategoryId] = useState('');
+  const [accountId, setAccountId] = useState('');
+  const [problem, setProblem] = useState<string | null>(null);
+  const expenseCategories = store.categories.filter((c) => c.kind === 'expense');
+
+  function add(event: FormEvent) {
+    event.preventDefault();
+    const centavos = parseAmount(amount);
+    const day = Number(dueDay);
+    if (!name.trim()) return setProblem('Give it a name, like Rent.');
+    if (!centavos) return setProblem('Enter an amount, like 3500.');
+    if (!Number.isInteger(day) || day < 1 || day > 31) return setProblem('The due day is a day of the month, 1 to 31.');
+    store.saveFixed({ name: name.trim(), amount_centavos: centavos, due_day: day, category_id: categoryId || null, account_id: accountId || null });
+    setName(''); setAmount(''); setProblem(null);
+  }
+  const patch = (e: FixedExpense, change: Partial<FixedExpense>) => store.saveFixed({ ...e, ...change });
+
+  return (
+    <Modal title="Fixed expenses" onClose={onClose}>
+      <p className="note muted">What you pay every month. Tick one off on the Money screen when it's paid; that logs the payment.</p>
+      <ul className="list-rows">
+        {store.fixed.map((e) => (
+          <li key={e.id} className="fixed-edit">
+            <input className="input grow" defaultValue={e.name} maxLength={60} aria-label={`Name of ${e.name}`}
+              onBlur={(ev) => { const next = ev.target.value.trim(); if (next && next !== e.name) patch(e, { name: next }); else ev.target.value = e.name; }} />
+            <input className="input narrow" inputMode="decimal" defaultValue={String(e.amount_centavos / 100)} aria-label={`Amount of ${e.name}`}
+              onBlur={(ev) => { const next = parseAmount(ev.target.value); if (next && next !== e.amount_centavos) patch(e, { amount_centavos: next }); else ev.target.value = String(e.amount_centavos / 100); }} />
+            <input className="input tiny" inputMode="numeric" defaultValue={String(e.due_day)} aria-label={`Due day of ${e.name}`}
+              onBlur={(ev) => { const next = Number(ev.target.value); if (Number.isInteger(next) && next >= 1 && next <= 31 && next !== e.due_day) patch(e, { due_day: next }); else ev.target.value = String(e.due_day); }} />
+            <button type="button" className="btn danger" onClick={() => store.removeFixed(e.id)} aria-label={`Delete ${e.name}`}>Delete</button>
+          </li>
+        ))}
+      </ul>
+      <form className="form" onSubmit={add}>
+        <div className="two">
+          <label className="field">Name<input className="input" value={name} maxLength={60} placeholder="Rent" onChange={(e) => setName(e.target.value)} /></label>
+          <label className="field">Amount (₱)<input className="input" inputMode="decimal" value={amount} placeholder="3500" onChange={(e) => setAmount(e.target.value)} /></label>
+        </div>
+        <div className="two">
+          <label className="field">Due day of the month<input className="input" inputMode="numeric" value={dueDay} onChange={(e) => setDueDay(e.target.value)} /></label>
+          <label className="field">Category
+            <select className="input" value={categoryId} onChange={(e) => setCategoryId(e.target.value)}>
+              <option value="">None</option>
+              {expenseCategories.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
+            </select>
+          </label>
+        </div>
+        <label className="field">Paid from
+          <select className="input" value={accountId} onChange={(e) => setAccountId(e.target.value)}>
+            <option value="">First account</option>
+            {store.accounts.map((a) => <option key={a.id} value={a.id}>{a.name}</option>)}
+          </select>
+        </label>
+        {problem && <p className="note error" role="alert">{problem}</p>}
+        <div className="actions"><span className="grow" /><button type="button" className="btn" onClick={onClose}>Done</button><button type="submit" className="btn primary">Add</button></div>
+      </form>
+    </Modal>
+  );
+}
+
+/** Money in, spent and kept for this month, with up to six months side by side. */
+function Recap({ months }: { months: ReturnType<typeof monthlyRecap> }) {
+  const now = months[months.length - 1];
+  const top = Math.max(1, ...months.flatMap((m) => [m.income, m.spent]));
+  const pct = (v: number) => `${Math.round((v / top) * 100)}%`;
+  return (
+    <section className="card recap" aria-labelledby="recap-title">
+      <h2 id="recap-title" className="card-label">Monthly recap</h2>
+      {now && (
+        <>
+          <dl className="recap-figures">
+            <div><dt>In</dt><dd>{formatPeso(now.income)}</dd></div>
+            <div><dt>Spent</dt><dd>{formatPeso(now.spent)}</dd></div>
+            <div><dt>Kept</dt><dd className={now.saved < 0 ? 'late' : 'kept'}>{formatPeso(now.saved)}</dd></div>
+          </dl>
+          <p className="note muted">{monthName(now.month, true)} so far</p>
+          <ul className="recap-chart">
+            {months.map((m) => (
+              <li key={m.month} aria-label={`${monthName(m.month, true)}: ${formatPeso(m.income)} in, ${formatPeso(m.spent)} spent, ${formatPeso(m.saved)} kept`}>
+                <div className="recap-bars" aria-hidden="true">
+                  <span className="in" style={{ height: pct(m.income) }} />
+                  <span className="out" style={{ height: pct(m.spent) }} />
+                </div>
+                <span className="recap-month" aria-hidden="true">{monthName(m.month)}</span>
+                <span className={m.saved < 0 ? 'recap-kept late' : 'recap-kept'} aria-hidden="true">{formatPesoShort(m.saved)}</span>
+              </li>
+            ))}
+          </ul>
+          <div className="recap-legend" aria-hidden="true"><span><i className="in" />In</span><span><i className="out" />Spent</span><span>Number below: kept</span></div>
+        </>
+      )}
+      <p className={now ? undefined : 'muted'}>{recapLine(months, formatPeso)}</p>
+    </section>
+  );
+}
+
+function StashDialog({ stash, store, startAccount, onClose }: { stash: Stash | null; store: MoneyStore; startAccount?: string; onClose: () => void }) {
+  const [name, setName] = useState(stash?.name ?? '');
+  const [accountId, setAccountId] = useState(stash?.account_id ?? startAccount ?? store.accounts[0]?.id ?? '');
+  const [goal, setGoal] = useState(stash?.goal_centavos ? String(stash.goal_centavos / 100) : '');
+  const [amount, setAmount] = useState('');
+  const [problem, setProblem] = useState<string | null>(null);
+  function submit(event: FormEvent) {
+    event.preventDefault();
+    if (!name.trim()) return setProblem('Give it a name, like Emergency fund.');
+    if (!accountId) return setProblem('Pick the account the money is in.');
+    const goalCentavos = goal.trim() === '' ? null : parseAmount(goal);
+    if (goal.trim() !== '' && !goalCentavos) return setProblem('Enter the goal as an amount, like 20000, or leave it empty.');
+    const start = amount.trim() === '' ? 0 : parseAmount(amount);
+    if (start === null) return setProblem('Enter an amount, like 5000, or leave it empty.');
+    store.saveStash({ id: stash?.id, name: name.trim().slice(0, 40), account_id: accountId, goal_centavos: goalCentavos, amount_centavos: stash ? stash.amount_centavos : start });
+    onClose();
+  }
+  return (
+    <Modal title={stash ? `Edit ${stash.name}` : 'New stash'} onClose={onClose}>
+      <form className="form" onSubmit={submit}>
+        {!stash && <p className="note muted">The money stays where it is. A stash only marks part of an account's balance as set aside, so it stops counting as spendable.</p>}
+        <div className="two">
+          <label className="field">Name
+            <input className="input" value={name} maxLength={40} placeholder="Emergency fund" onChange={(e) => setName(e.target.value)} data-autofocus />
+          </label>
+          <label className="field">Kept in
+            <select className="input" value={accountId} onChange={(e) => setAccountId(e.target.value)}>
+              {store.accounts.map((a) => <option key={a.id} value={a.id}>{a.name}</option>)}
+            </select>
+          </label>
+        </div>
+        <div className="two">
+          <label className="field">Goal (₱, optional)
+            <input className="input" inputMode="decimal" value={goal} placeholder="20000" onChange={(e) => setGoal(e.target.value)} />
+          </label>
+          {!stash && (
+            <label className="field">Set aside now (₱)
+              <input className="input" inputMode="decimal" value={amount} placeholder="0" onChange={(e) => setAmount(e.target.value)} />
+            </label>
+          )}
+        </div>
+        {problem && <p className="note error" role="alert">{problem}</p>}
+        <div className="actions">
+          {stash && <button type="button" className="btn danger" onClick={() => { store.removeStash(stash.id); onClose(); }}>Delete stash</button>}
+          <span className="grow" />
+          <button type="button" className="btn" onClick={onClose}>Cancel</button>
+          <button type="submit" className="btn primary">{stash ? 'Save' : 'Add stash'}</button>
+        </div>
+        {stash && <p className="note muted">Deleting a stash doesn't move or remove money. What was set aside counts as spendable again.</p>}
+      </form>
+    </Modal>
+  );
+}
+
+function StashMoveDialog({ stash, mode, free, accountName, store, onClose }: { stash: Stash; mode: 'in' | 'out'; free: number; accountName: string; store: MoneyStore; onClose: () => void }) {
+  const [amount, setAmount] = useState('');
+  const [problem, setProblem] = useState<string | null>(null);
+  const centavos = parseAmount(amount);
+  const putting = mode === 'in';
+  function submit(event: FormEvent) {
+    event.preventDefault();
+    if (!centavos) return setProblem('Enter an amount, like 500.');
+    if (!putting && centavos > stash.amount_centavos) return setProblem(`Only ${formatPeso(stash.amount_centavos)} is in ${stash.name}.`);
+    store.saveStash({ ...stash, amount_centavos: moveStash(stash, putting ? centavos : -centavos) });
+    onClose();
+  }
+  return (
+    <Modal title={putting ? `Put money in ${stash.name}` : `Take money out of ${stash.name}`} onClose={onClose}>
+      <form className="form" onSubmit={submit}>
+        <p className="note muted">
+          {putting
+            ? `${accountName} has ${formatPeso(Math.max(0, free))} that isn't set aside yet. Nothing moves between accounts; this only marks the money as saved.`
+            : `${stash.name} has ${formatPeso(stash.amount_centavos)}. What you take out counts as spendable again.`}
+        </p>
+        <label className="field">Amount (₱)
+          <input className="input" inputMode="decimal" value={amount} placeholder="500" onChange={(e) => setAmount(e.target.value)} data-autofocus />
+        </label>
+        {putting && centavos !== null && centavos > free && <p className="note warn">That's more than {accountName} has free. Check its balance first, or it will show as over.</p>}
+        {problem && <p className="note error" role="alert">{problem}</p>}
+        <div className="actions">
+          <span className="grow" />
+          <button type="button" className="btn" onClick={onClose}>Cancel</button>
+          <button type="submit" className="btn primary">{putting ? 'Put in' : 'Take out'}</button>
+        </div>
+      </form>
+    </Modal>
+  );
+}
+
+/** How long a ticked item stays visible before it moves; how long a row takes to fold shut. */
+const CHECKED_MS = 340;
+const FOLD_MS = 220;
+const EASE_OUT = 'cubic-bezier(0.23, 1, 0.32, 1)';
+const reducedMotion = () => window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+/** The last change to a number, kept for about a second so it can float beside the number. Null on first load. */
+function useChange(value: number | null): { key: number; delta: number } | null {
+  const prev = useRef<number | null>(null);
+  const [change, setChange] = useState<{ key: number; delta: number } | null>(null);
+  useEffect(() => {
+    if (value === null) return;
+    const was = prev.current;
+    prev.current = value;
+    if (was === null || was === value) return;
+    const key = performance.now();
+    setChange({ key, delta: value - was });
+    window.setTimeout(() => setChange((c) => (c?.key === key ? null : c)), 1000);
+  }, [value]);
+  return change;
+}
+
+/** A big peso figure that tints for a moment and shows the change beside it, e.g. "−₱130", after it changes. */
+function Figure({ value, change }: { value: number; change: { key: number; delta: number } | null }) {
+  return (
+    <>
+      <span key={change?.key ?? 0} className={change ? 'figure bumped' : 'figure'}>{formatPeso(value)}</span>
+      {change && <span key={`d${change.key}`} className={change.delta < 0 ? 'delta out' : 'delta'} aria-hidden="true">{formatPeso(change.delta, { sign: true })}</span>}
+    </>
+  );
+}
+
+/** Ids that appeared after the first load, for about half a second, so their rows can slide in. */
+function useFresh(ids: string[], loading: boolean) {
+  const known = useRef<Set<string> | null>(null);
+  const [fresh, setFresh] = useState<Set<string>>(new Set());
+  const key = ids.join(',');
+  const mark = (id: string) => {
+    setFresh((cur) => new Set(cur).add(id));
+    window.setTimeout(() => setFresh((cur) => { const next = new Set(cur); next.delete(id); return next; }), 600);
+  };
+  useLayoutEffect(() => {
+    if (loading) return;
+    if (!known.current) { known.current = new Set(ids); return; }
+    for (const id of ids) if (!known.current.has(id)) { known.current.add(id); mark(id); }
+  }, [key, loading]); // eslint-disable-line react-hooks/exhaustive-deps
+  return { has: (id: string) => fresh.has(id), mark };
+}
+
+/** Folds a list row shut: pins its height so there is a number to shrink from, then lets the CSS take it to zero. */
+function useFold(ref: RefObject<HTMLElement | null>, folding: boolean) {
+  useLayoutEffect(() => {
+    const el = ref.current;
+    if (!el || !folding) return;
+    el.style.height = `${el.offsetHeight}px`;
+    void el.offsetHeight;
+    el.classList.add('folding');
+  }, [ref, folding]);
+}
+
+/** Rows that change place in a list glide to their new spot instead of jumping (marked with data-flip). */
+function useFlip(list: RefObject<HTMLElement | null>, deps: unknown[]) {
+  const tops = useRef(new Map<string, number>());
+  useLayoutEffect(() => {
+    const el = list.current;
+    if (!el) return;
+    const next = new Map<string, number>();
+    for (const child of Array.from(el.querySelectorAll<HTMLElement>('[data-flip]'))) {
+      const id = child.dataset.flip!;
+      const top = child.offsetTop;
+      next.set(id, top);
+      const was = tops.current.get(id);
+      if (was !== undefined && Math.abs(was - top) > 1 && !reducedMotion()) {
+        child.animate([{ transform: `translateY(${was - top}px)` }, { transform: 'none' }], { duration: 280, easing: EASE_OUT });
+      }
+    }
+    tops.current = next;
+  }, deps); // eslint-disable-line react-hooks/exhaustive-deps
 }

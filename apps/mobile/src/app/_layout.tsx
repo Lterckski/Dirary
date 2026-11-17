@@ -11,12 +11,13 @@ import { colors, fonts } from '@dirary/ui';
 import { HealthIcon, MoneyIcon, TasksIcon, TodayIcon } from '@/components/icons';
 import { StaticMascot } from '@/components/mascot';
 import { SetupNeeded, SignIn } from '@/components/sign-in';
+import { FloatingTabBar } from '@/components/tab-bar';
 import { useSession } from '@/lib/session';
 import { supabase } from '@/lib/supabase';
 
 SplashScreen.preventAutoHideAsync();
 
-function CoachButton() {
+export function CoachButton() {
   return (
     <Pressable
       accessibilityRole="button"
@@ -47,6 +48,7 @@ export default function RootLayout() {
     <>
       <StatusBar style="light" />
       <Tabs
+        tabBar={(props) => <FloatingTabBar {...props} />}
         screenOptions={{
           headerStyle: { backgroundColor: colors.night },
           headerShadowVisible: false,
@@ -55,14 +57,10 @@ export default function RootLayout() {
           headerTitleAlign: 'left',
           headerRight: () => <CoachButton />,
           sceneStyle: { backgroundColor: colors.night },
-          tabBarStyle: { backgroundColor: colors.surface, borderTopColor: colors.line, height: 72, paddingTop: 6 },
-          tabBarActiveTintColor: colors.inkBlue,
-          tabBarInactiveTintColor: colors.muted,
-          tabBarLabelStyle: { fontFamily: fonts.bodySemi, fontSize: 12 },
         }}>
         <Tabs.Screen name="index" options={{ title: 'Today', tabBarIcon: ({ color }) => <TodayIcon color={color} /> }} />
         <Tabs.Screen name="tasks" options={{ title: 'Tasks', tabBarIcon: ({ color }) => <TasksIcon color={color} /> }} />
-        <Tabs.Screen name="money" options={{ title: 'Money', tabBarIcon: ({ color }) => <MoneyIcon color={color} /> }} />
+        <Tabs.Screen name="money" options={{ title: 'Money', headerShown: false, tabBarIcon: ({ color }) => <MoneyIcon color={color} /> }} />
         <Tabs.Screen name="health" options={{ title: 'Health', tabBarIcon: ({ color }) => <HealthIcon color={color} /> }} />
       </Tabs>
     </>

@@ -8,23 +8,29 @@
 import * as SQLite from 'expo-sqlite';
 import type { SupabaseClient } from '@supabase/supabase-js';
 import {
-  ACCOUNTS_TABLE, ACCOUNT_COLUMNS, CATEGORIES_TABLE, CATEGORY_COLUMNS, LISTS_TABLE, LIST_COLUMNS, TASKS_TABLE, TASK_COLUMNS, TRANSACTIONS_TABLE,
-  TRANSACTION_COLUMNS, remoteWins, type Account, type Category, type List, type Task, type Transaction,
+  ACCOUNTS_TABLE, ACCOUNT_COLUMNS, CATEGORIES_TABLE, CATEGORY_COLUMNS, FIXED_EXPENSES_TABLE, FIXED_EXPENSE_COLUMNS, LISTS_TABLE, LIST_COLUMNS, MONEY_PLANS_TABLE, MONEY_PLAN_COLUMNS,
+  STASHES_TABLE, STASH_COLUMNS, TASKS_TABLE, TASK_COLUMNS, TRANSACTIONS_TABLE, TRANSACTION_COLUMNS, remoteWins,
+  type Account, type Category, type FixedExpense, type List, type MoneyPlan, type Stash, type Task, type Transaction,
 } from '@dirary/shared';
 
 type Row = Record<string, string | number | null>;
-interface TableDef { name: string; select: string; columns: string[] }
+/** `optional` tables may not exist on the server yet (their SQL file not run); sync skips them instead of failing. */
+interface TableDef { name: string; select: string; columns: string[]; optional?: boolean }
 
 const cols = (select: string) => select.split(',').map((c) => c.trim());
-// Order matters: a task may point at a list, and a transaction at an account and a category.
+// Order matters: a task may point at a list, and a transaction at an account, a category and a fixed expense.
 const TABLES: TableDef[] = [
   { name: LISTS_TABLE, select: LIST_COLUMNS, columns: cols(LIST_COLUMNS) },
   { name: TASKS_TABLE, select: TASK_COLUMNS, columns: cols(TASK_COLUMNS) },
   { name: ACCOUNTS_TABLE, select: ACCOUNT_COLUMNS, columns: cols(ACCOUNT_COLUMNS) },
   { name: CATEGORIES_TABLE, select: CATEGORY_COLUMNS, columns: cols(CATEGORY_COLUMNS) },
+  { name: FIXED_EXPENSES_TABLE, select: FIXED_EXPENSE_COLUMNS, columns: cols(FIXED_EXPENSE_COLUMNS) },
+  { name: MONEY_PLANS_TABLE, select: MONEY_PLAN_COLUMNS, columns: cols(MONEY_PLAN_COLUMNS) },
   { name: TRANSACTIONS_TABLE, select: TRANSACTION_COLUMNS, columns: cols(TRANSACTION_COLUMNS) },
+  { name: STASHES_TABLE, select: STASH_COLUMNS, columns: cols(STASH_COLUMNS), optional: true },
 ];
-export type SyncedTable = typeof LISTS_TABLE | typeof TASKS_TABLE | typeof ACCOUNTS_TABLE | typeof CATEGORIES_TABLE | typeof TRANSACTIONS_TABLE;
+const missingTable = (message: string) => /relation .* does not exist|schema cache/i.test(message);
+export type SyncedTable = typeof LISTS_TABLE | typeof TASKS_TABLE | typeof ACCOUNTS_TABLE | typeof CATEGORIES_TABLE | typeof FIXED_EXPENSES_TABLE | typeof MONEY_PLANS_TABLE | typeof TRANSACTIONS_TABLE | typeof STASHES_TABLE;
 /** Re-read a little before the cursor, so a change stamped by a device with a slow clock isn't missed. */
 const OVERLAP_MS = 10 * 60 * 1000;
 
@@ -55,12 +61,27 @@ export function db(): Promise<SQLite.SQLiteDatabase> {
       );
       CREATE TABLE IF NOT EXISTS transactions (
         id TEXT PRIMARY KEY NOT NULL, account_id TEXT, category_id TEXT, amount_centavos INTEGER NOT NULL, direction TEXT NOT NULL,
-        merchant TEXT, note TEXT, occurred_at TEXT NOT NULL, source TEXT NOT NULL, status TEXT NOT NULL, fingerprint TEXT, transfer_group_id TEXT,
+        merchant TEXT, note TEXT, occurred_at TEXT NOT NULL, source TEXT NOT NULL, status TEXT NOT NULL, fingerprint TEXT, transfer_group_id TEXT, fixed_expense_id TEXT,
         created_at TEXT NOT NULL, updated_at TEXT NOT NULL, deleted_at TEXT, dirty INTEGER NOT NULL DEFAULT 0
       );
       CREATE INDEX IF NOT EXISTS transactions_occurred_idx ON transactions (occurred_at);
       CREATE INDEX IF NOT EXISTS transactions_fingerprint_idx ON transactions (fingerprint);
+      CREATE TABLE IF NOT EXISTS fixed_expenses (
+        id TEXT PRIMARY KEY NOT NULL, name TEXT NOT NULL, amount_centavos INTEGER NOT NULL, due_day INTEGER NOT NULL DEFAULT 1, category_id TEXT, account_id TEXT,
+        sort_order INTEGER NOT NULL DEFAULT 0, created_at TEXT NOT NULL, updated_at TEXT NOT NULL, deleted_at TEXT, dirty INTEGER NOT NULL DEFAULT 0
+      );
+      CREATE TABLE IF NOT EXISTS stashes (
+        id TEXT PRIMARY KEY NOT NULL, name TEXT NOT NULL, account_id TEXT NOT NULL, amount_centavos INTEGER NOT NULL DEFAULT 0, goal_centavos INTEGER,
+        sort_order INTEGER NOT NULL DEFAULT 0, created_at TEXT NOT NULL, updated_at TEXT NOT NULL, deleted_at TEXT, dirty INTEGER NOT NULL DEFAULT 0
+      );
+      CREATE TABLE IF NOT EXISTS money_plans (
+        id TEXT PRIMARY KEY NOT NULL, monthly_budget_centavos INTEGER,
+        created_at TEXT NOT NULL, updated_at TEXT NOT NULL, deleted_at TEXT, dirty INTEGER NOT NULL DEFAULT 0
+      );
     `);
+    // A phone that installed an earlier build has a transactions table without this column.
+    const txColumns = await database.getAllAsync<{ name: string }>('PRAGMA table_info(transactions)');
+    if (!txColumns.some((c) => c.name === 'fixed_expense_id')) await database.execAsync('ALTER TABLE transactions ADD COLUMN fixed_expense_id TEXT');
     return database;
   })();
   return dbPromise;
@@ -78,12 +99,18 @@ async function upsert(database: SQLite.SQLiteDatabase, table: TableDef, row: Row
 const tableOf = (name: string) => TABLES.find((t) => t.name === name)!;
 
 /** Saves a row on the phone and marks it for syncing. */
-export async function saveLocal(table: SyncedTable, row: List | Task | Account | Category | Transaction): Promise<void> {
+export async function saveLocal(table: SyncedTable, row: List | Task | Account | Category | Transaction | FixedExpense | MoneyPlan | Stash): Promise<void> {
   await upsert(await db(), tableOf(table), row as unknown as Row, 1);
 }
 
 export async function readTasks(): Promise<Task[]> {
   return (await db()).getAllAsync<Task>(`SELECT ${TASK_COLUMNS} FROM tasks WHERE deleted_at IS NULL ORDER BY created_at`);
+}
+
+/** Every task id this phone has seen, deleted ones included. */
+export async function readAllTaskIds(): Promise<Set<string>> {
+  const rows = await (await db()).getAllAsync<{ id: string }>('SELECT id FROM tasks');
+  return new Set(rows.map((r) => r.id));
 }
 
 export async function readLists(): Promise<List[]> {
@@ -100,6 +127,18 @@ export async function readCategories(): Promise<Category[]> {
 
 export async function readTransactions(): Promise<Transaction[]> {
   return (await db()).getAllAsync<Transaction>(`SELECT ${TRANSACTION_COLUMNS} FROM transactions WHERE deleted_at IS NULL ORDER BY occurred_at DESC LIMIT 5000`);
+}
+
+export async function readFixedExpenses(): Promise<FixedExpense[]> {
+  return (await db()).getAllAsync<FixedExpense>(`SELECT ${FIXED_EXPENSE_COLUMNS} FROM fixed_expenses WHERE deleted_at IS NULL ORDER BY sort_order, created_at`);
+}
+
+export async function readStashes(): Promise<Stash[]> {
+  return (await db()).getAllAsync<Stash>(`SELECT ${STASH_COLUMNS} FROM stashes WHERE deleted_at IS NULL ORDER BY sort_order, created_at`);
+}
+
+export async function readMoneyPlans(): Promise<MoneyPlan[]> {
+  return (await db()).getAllAsync<MoneyPlan>(`SELECT ${MONEY_PLAN_COLUMNS} FROM money_plans WHERE deleted_at IS NULL`);
 }
 
 /** True if a transaction with this fingerprint was ever logged here, including ones you deleted, so a deleted one doesn't come back. */
@@ -119,6 +158,16 @@ export async function pendingCount(): Promise<number> {
   const database = await db();
   const row = await database.getFirstAsync<{ n: number }>(`SELECT ${TABLES.map((t) => `(SELECT COUNT(*) FROM ${t.name} WHERE dirty = 1)`).join(' + ')} AS n`);
   return row?.n ?? 0;
+}
+
+/** Marks every transaction deleted and every account at ₱0, ready to sync. */
+export async function resetMoneyLocal(stamp: string): Promise<void> {
+  const database = await db();
+  await database.withTransactionAsync(async () => {
+    await database.runAsync('UPDATE transactions SET deleted_at = ?, updated_at = ?, dirty = 1 WHERE deleted_at IS NULL', [stamp, stamp]);
+    await database.runAsync('UPDATE accounts SET opening_balance_centavos = 0, updated_at = ?, dirty = 1 WHERE deleted_at IS NULL', [stamp]);
+    await database.runAsync('UPDATE stashes SET amount_centavos = 0, updated_at = ?, dirty = 1 WHERE deleted_at IS NULL', [stamp]);
+  });
 }
 
 /** Clears everything stored on this phone. Used when signing out. */
@@ -145,6 +194,7 @@ async function runSync(client: SupabaseClient) {
     if (dirty.length > 0) {
       const payload = dirty.map((row) => Object.fromEntries(table.columns.map((c) => [c, row[c] ?? null])));
       const { error } = await client.from(table.name).upsert(payload);
+      if (error && table.optional && missingTable(error.message)) continue; // keep them dirty until the table exists
       if (error) throw new Error(error.message);
       for (const row of dirty) {
         // Only clear the flag if the row wasn't edited again while the push was in flight.
@@ -159,6 +209,7 @@ async function runSync(client: SupabaseClient) {
     const cursor = saved?.value ?? '1970-01-01T00:00:00.000Z';
     const since = new Date(Math.max(0, Date.parse(cursor) - OVERLAP_MS)).toISOString();
     const { data, error } = await client.from(table.name).select(table.select).gt('updated_at', since).order('updated_at', { ascending: true }).limit(5000);
+    if (error && table.optional && missingTable(error.message)) continue;
     if (error) throw new Error(error.message);
 
     let newest = cursor;

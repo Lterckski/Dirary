@@ -3,12 +3,12 @@ import * as Crypto from 'expo-crypto';
 import { useCallback, useEffect, useState } from 'react';
 import { AppState } from 'react-native';
 import {
-  ACCOUNTS_TABLE, CATEGORIES_TABLE, STARTER_ACCOUNTS, STARTER_CATEGORIES, TRANSACTIONS_TABLE,
-  type Account, type Category, type Transaction, type TransactionDraft,
+  ACCOUNTS_TABLE, CATEGORIES_TABLE, FIXED_EXPENSES_TABLE, MONEY_PLANS_TABLE, STARTER_ACCOUNTS, STARTER_CATEGORIES, STASHES_TABLE, TASKS_TABLE, TRANSACTIONS_TABLE, billTaskId, checkPassword, localDate, currentPlan, passwordProblem, resetMoneyRemote,
+  type Account, type Category, type FixedExpense, type MoneyPlan, type Stash, type Transaction, type TransactionDraft,
 } from '@dirary/shared';
 
 import { processCaptures } from './capture';
-import { readAccounts, readCategories, readTransactions, saveLocal } from './db';
+import { readAccounts, readCategories, readFixedExpenses, readMoneyPlans, readStashes, readTasks, readTransactions, resetMoneyLocal, saveLocal } from './db';
 import { supabase } from './supabase';
 import { subscribeStore, syncTasks } from './tasks-store';
 import { refreshWidgets } from '../widgets/refresh';
@@ -24,7 +24,7 @@ async function changed() {
 
 function newTransaction(draft: TransactionDraft, extra: Partial<Transaction> = {}): Transaction {
   const stamp = now();
-  return { id: Crypto.randomUUID(), ...draft, source: 'manual', status: 'confirmed', fingerprint: null, transfer_group_id: null, created_at: stamp, updated_at: stamp, deleted_at: null, ...extra };
+  return { id: Crypto.randomUUID(), ...draft, source: 'manual', status: 'confirmed', fingerprint: null, transfer_group_id: null, fixed_expense_id: null, created_at: stamp, updated_at: stamp, deleted_at: null, ...extra };
 }
 
 export async function addTransaction(draft: TransactionDraft): Promise<void> {
@@ -83,6 +83,71 @@ export async function removeCategory(category: Category): Promise<void> {
   await changed();
 }
 
+export async function saveFixed(expense: FixedExpense | (Pick<FixedExpense, 'name' | 'amount_centavos' | 'due_day' | 'category_id' | 'account_id'> & { sort_order: number })): Promise<void> {
+  const stamp = now();
+  const row: FixedExpense = 'id' in expense ? { ...expense, updated_at: stamp } : { id: Crypto.randomUUID(), ...expense, created_at: stamp, updated_at: stamp, deleted_at: null };
+  await saveLocal(FIXED_EXPENSES_TABLE, row);
+  await changed();
+}
+
+/** Deleting a bill also deletes this month's bill task, unless it was already ticked. */
+export async function removeFixed(expense: FixedExpense): Promise<void> {
+  const stamp = now();
+  await saveLocal(FIXED_EXPENSES_TABLE, { ...expense, deleted_at: stamp, updated_at: stamp });
+  const task = (await readTasks()).find((t) => t.id === billTaskId(expense.id, localDate().slice(0, 7)));
+  if (task && task.status === 'todo') await saveLocal(TASKS_TABLE, { ...task, deleted_at: stamp, updated_at: stamp });
+  await changed();
+}
+
+/** Ticking a fixed expense logs its payment, linked to it so it counts as paid this month. */
+export async function payFixed(expense: FixedExpense, fallbackAccountId: string | null): Promise<void> {
+  await saveLocal(TRANSACTIONS_TABLE, newTransaction(
+    { account_id: expense.account_id ?? fallbackAccountId, category_id: expense.category_id, amount_centavos: expense.amount_centavos, direction: 'out', merchant: expense.name, note: null, occurred_at: now() },
+    { fixed_expense_id: expense.id },
+  ));
+  await changed();
+}
+
+/** Sets the monthly budget (null clears it). There is one plan; it is created on first use. */
+export async function setMonthlyBudget(monthly_budget_centavos: number | null): Promise<void> {
+  const stamp = now();
+  const existing = currentPlan(await readMoneyPlans());
+  const row: MoneyPlan = existing ? { ...existing, monthly_budget_centavos, updated_at: stamp } : { id: Crypto.randomUUID(), monthly_budget_centavos, created_at: stamp, updated_at: stamp, deleted_at: null };
+  await saveLocal(MONEY_PLANS_TABLE, row);
+  await changed();
+}
+
+/**
+ * Checks the password, then deletes every transaction and sets every account to ₱0, on the server first
+ * (so rows this phone hasn't pulled yet go too) and then here. Returns a problem to show, or null when done.
+ */
+export async function resetMoney(password: string): Promise<string | null> {
+  if (!supabase) return 'Not connected.';
+  const check = await checkPassword(supabase, password);
+  if (check !== 'ok') return passwordProblem(check);
+  const stamp = now();
+  const failure = await resetMoneyRemote(supabase, stamp);
+  if (failure) return /fetch|network/i.test(failure) ? "Couldn't reach the server. Nothing was reset; try again." : failure;
+  await resetMoneyLocal(stamp);
+  await changed();
+  return null;
+}
+
+/** Creates a stash, or changes one. The money never moves; a stash only marks part of an account as set aside. */
+export async function saveStash(stash: Stash | (Pick<Stash, 'name' | 'account_id' | 'amount_centavos' | 'goal_centavos'> & { sort_order: number })): Promise<void> {
+  const stamp = now();
+  const row: Stash = 'id' in stash
+    ? { ...stash, amount_centavos: Math.max(0, stash.amount_centavos), updated_at: stamp }
+    : { id: Crypto.randomUUID(), ...stash, amount_centavos: Math.max(0, stash.amount_centavos), created_at: stamp, updated_at: stamp, deleted_at: null };
+  await saveLocal(STASHES_TABLE, row);
+  await changed();
+}
+
+export async function removeStash(stash: Stash): Promise<void> {
+  await saveLocal(STASHES_TABLE, { ...stash, deleted_at: now(), updated_at: now() });
+  await changed();
+}
+
 /** One tap on first use: your three accounts plus Cash, and a starter set of categories. */
 export async function addStarterSet(): Promise<void> {
   const stamp = now();
@@ -108,10 +173,16 @@ export function useMoneyStore() {
   const [accounts, setAccounts] = useState<Account[]>([]);
   const [categories, setCategories] = useState<Category[]>([]);
   const [transactions, setTransactions] = useState<Transaction[]>([]);
+  const [fixed, setFixed] = useState<FixedExpense[]>([]);
+  const [plan, setPlan] = useState<MoneyPlan | null>(null);
+  const [stashes, setStashes] = useState<Stash[]>([]);
   const [loading, setLoading] = useState(true);
 
   const load = useCallback(async () => {
-    const [a, c, t] = await Promise.all([readAccounts(), readCategories(), readTransactions()]);
+    const [a, c, t, f, p, s] = await Promise.all([readAccounts(), readCategories(), readTransactions(), readFixedExpenses(), readMoneyPlans(), readStashes()]);
+    setStashes(s);
+    setFixed(f);
+    setPlan(currentPlan(p));
     setAccounts(a);
     setCategories(c);
     setTransactions(t);
@@ -127,7 +198,7 @@ export function useMoneyStore() {
     const client = supabase;
     let channel = client?.channel('money_phone');
     if (channel) {
-      for (const table of [ACCOUNTS_TABLE, CATEGORIES_TABLE, TRANSACTIONS_TABLE]) channel = channel.on('postgres_changes', { event: '*', schema: 'public', table }, () => { syncTasks(); });
+      for (const table of [ACCOUNTS_TABLE, CATEGORIES_TABLE, TRANSACTIONS_TABLE, FIXED_EXPENSES_TABLE, MONEY_PLANS_TABLE, STASHES_TABLE]) channel = channel.on('postgres_changes', { event: '*', schema: 'public', table }, () => { syncTasks(); });
       channel.subscribe();
     }
     return () => {
@@ -138,5 +209,5 @@ export function useMoneyStore() {
     };
   }, [load]);
 
-  return { accounts, categories, transactions, loading };
+  return { accounts, categories, transactions, fixed, plan, stashes, loading };
 }

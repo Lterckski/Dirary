@@ -4,7 +4,8 @@ import { useCallback, useEffect, useState } from 'react';
 import { AppState } from 'react-native';
 import { LISTS_TABLE, TASKS_TABLE, completeTask, localDate, reopenTask, type List, type ListColor, type Task, type TaskDraft } from '@dirary/shared';
 
-import { clearLocal, pendingCount, readLists, readTasks, saveLocal, syncAll } from './db';
+import { reconcileBillTasks, toggleBillTask } from './bill-tasks';
+import { clearLocal, getMeta, pendingCount, readLists, readTasks, saveLocal, syncAll } from './db';
 import { refreshReminders } from './reminders';
 import { supabase } from './supabase';
 import { clearCaptures } from '../../modules/dirary-capture';
@@ -41,18 +42,27 @@ function syncSoon() {
 
 /** Runs a sync and reports the outcome to the screens. Never throws. */
 export async function syncTasks(): Promise<void> {
-  if (!supabase) return;
-  try {
-    const { pulled } = await syncAll(supabase);
-    syncMessage = '';
-    if (pulled > 0) {
-      const tasks = await readTasks();
-      refreshReminders(tasks).catch(() => {});
-      refreshWidgets().catch(() => {});
+  // Bills become tasks even offline, once this phone has pulled at least once (so it knows which bill
+  // tasks the web already made or you deleted). After a pull, payments made elsewhere tick their tasks here.
+  const pulledBefore = (await getMeta(`cursor_${TASKS_TABLE}`)) !== null;
+  let changedHere = pulledBefore ? await reconcileBillTasks().catch(() => 0) : 0;
+  let pulled = 0;
+  if (supabase) {
+    try {
+      pulled = (await syncAll(supabase)).pulled;
+      const more = await reconcileBillTasks().catch(() => 0);
+      if (more > 0) await syncAll(supabase);
+      changedHere += more;
+      syncMessage = '';
+    } catch {
+      const waiting = await pendingCount();
+      syncMessage = waiting > 0 ? `Offline. ${waiting} change${waiting === 1 ? '' : 's'} saved on this phone.` : 'Offline. Showing what is saved on this phone.';
     }
-  } catch {
-    const waiting = await pendingCount();
-    syncMessage = waiting > 0 ? `Offline. ${waiting} change${waiting === 1 ? '' : 's'} saved on this phone.` : 'Offline. Showing what is saved on this phone.';
+  }
+  if (pulled > 0 || changedHere > 0) {
+    const tasks = await readTasks();
+    refreshReminders(tasks).catch(() => {});
+    refreshWidgets().catch(() => {});
   }
   emit();
 }
@@ -69,9 +79,11 @@ export async function updateTask(task: Task, patch: Partial<Task>): Promise<void
   await changed();
 }
 
-/** Ticking a repeating task also creates its next occurrence. */
+/** Ticking a repeating task also creates its next occurrence. Ticking a bill logs its payment in Money. */
 export async function toggleTask(task: Task): Promise<void> {
-  if (task.status === 'done') {
+  if (await toggleBillTask(task)) {
+    // handled
+  } else if (task.status === 'done') {
     await saveLocal(TASKS_TABLE, { ...task, ...reopenTask(now()) });
   } else {
     const { done, next } = completeTask(task, now(), localDate(), Crypto.randomUUID());

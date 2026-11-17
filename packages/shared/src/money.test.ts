@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { parseNotification } from './capture';
 import {
-  accountBalance, budgetCoach, findTransferPairs, formatPeso, monthSummary, parseAmount, parseMoneyQuickAdd, spentOn,
+  accountBalance, budgetCoach, endOfDayBalances, findTransferPairs, formatPeso, monthSummary, parseAmount, parseMoneyQuickAdd, spentOn,
   type Account, type Category, type Transaction,
 } from './money';
 
@@ -11,7 +11,7 @@ const cat = (id: string, name: string, limit: number | null = null, kind: Catego
 let n = 0;
 const tx = (p: Partial<Transaction>): Transaction => ({
   id: `t${n++}`, account_id: 'gcash', category_id: null, amount_centavos: 10000, direction: 'out', merchant: null, note: null,
-  occurred_at: '2026-11-17T04:00:00Z', source: 'manual', status: 'confirmed', fingerprint: null, transfer_group_id: null, ...stamps, ...p,
+  occurred_at: '2026-11-17T04:00:00Z', source: 'manual', status: 'confirmed', fingerprint: null, transfer_group_id: null, fixed_expense_id: null, ...stamps, ...p,
 });
 const day = (iso: string) => iso.slice(0, 10);
 const accounts = [acct('gcash', 'GCash', 'gcash', 50000), acct('gotyme', 'GoTyme', 'gotyme'), acct('cash', 'Cash', 'cash')];
@@ -85,6 +85,13 @@ describe('money quick add', () => {
     expect(parseMoneyQuickAdd('1000 #allowance', categories, accounts).direction).toBe('in');
     expect(parseMoneyQuickAdd('lunch', categories, accounts).amount_centavos).toBeNull();
   });
+  it('follows the Spent / Received switch', () => {
+    expect(parseMoneyQuickAdd('5000 from mama @gotyme', categories, accounts, 'in')).toMatchObject({ amount_centavos: 500000, direction: 'in', account_id: 'gotyme' });
+    expect(parseMoneyQuickAdd('+5000 from mama', categories, accounts, 'out').direction).toBe('in');
+    // An expense category makes no sense on money in, so it is dropped rather than mislabelled.
+    expect(parseMoneyQuickAdd('300 refund #food', categories, accounts, 'in')).toMatchObject({ direction: 'in', category_id: null });
+    expect(parseMoneyQuickAdd('300 refund #allow', categories, accounts, 'in')).toMatchObject({ direction: 'in', category_id: 'allow' });
+  });
 });
 
 describe('notification reader (best effort, not yet checked against real notifications)', () => {
@@ -140,5 +147,21 @@ describe('statement import', () => {
   it('reads a single signed amount column', () => {
     const { ok } = rowsToTransactions([['2026-11-17', 'Coffee', '(120.00)'], ['2026-11-17', 'Refund', '120.00']], { date: 0, description: 1, amount: 2 }, 'acc');
     expect(ok.map((r) => r.direction)).toEqual(['out', 'in']);
+  });
+});
+
+describe('end-of-day balances', () => {
+  it('runs one account forward from its opening balance, day by day', () => {
+    const g = accounts[0]!; // GCash, opens at ₱500
+    const rows = [
+      tx({ account_id: 'gcash', amount_centavos: 10000, occurred_at: '2026-11-02T03:00:00Z' }),
+      tx({ account_id: 'gcash', amount_centavos: 100000, direction: 'in', occurred_at: '2026-11-02T09:00:00Z' }),
+      tx({ account_id: 'gcash', amount_centavos: 25000, occurred_at: '2026-11-01T05:00:00Z' }),
+      tx({ account_id: 'cash', amount_centavos: 99900, occurred_at: '2026-11-02T05:00:00Z' }),
+      tx({ account_id: 'gcash', amount_centavos: 99900, status: 'needs_review', occurred_at: '2026-11-03T05:00:00Z' }),
+    ];
+    const days = endOfDayBalances(g, rows, (iso) => iso.slice(0, 10));
+    expect([...days]).toEqual([['2026-11-01', 25000], ['2026-11-02', 115000]]);
+    expect(days.get('2026-11-02')).toBe(accountBalance(g, rows));
   });
 });

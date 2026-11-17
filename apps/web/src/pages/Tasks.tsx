@@ -1,12 +1,17 @@
-import { useEffect, useMemo, useRef, useState, type FormEvent } from 'react';
+import { useEffect, useLayoutEffect, useMemo, useRef, useState, type FormEvent } from 'react';
 import {
   GROUPINGS, GROUPING_LABEL, LIST_COLORS, PRIORITIES, PRIORITY_LABEL, RECURRENCES, RECURRENCE_LABEL, REMINDERS, REMINDER_LABEL, TaskDraft, addDays, asRecurrence, dayLabel,
-  defaultReminder, doneView, fromNow, groupTasks, listView, localDate, parseQuickAdd, remindAt, reminderOf, timeLabel, todayCoach, todayView, upcomingView,
+  amountInTask, defaultReminder, doneView, formatPeso, taskWithoutAmount, fromNow, groupTasks, listView, localDate, parseQuickAdd, remindAt, reminderOf, timeLabel, todayCoach, todayView, upcomingView,
   type Grouping, type List, type ListColor, type Priority, type Recurrence, type Reminder, type Task,
 } from '@dirary/shared';
+import { confettiFrom } from '../confetti';
 import { Mascot } from '../Mascot';
-import { Modal, openPicker } from '../ui';
+import { DatePicker, TimePicker } from '../pickers';
+import { Modal } from '../ui';
+import { useBillTasks } from '../links/useBillTasks';
+import { useMoney } from '../money/useMoney';
 import { useTasks } from '../tasks/useTasks';
+import { TxDialog } from './Money';
 
 type View = 'today' | 'upcoming' | 'inbox' | 'done' | string; // any other string is a list id
 const FIXED_VIEWS = ['today', 'upcoming', 'inbox', 'done'];
@@ -14,13 +19,30 @@ const toLocal = (iso: string) => localDate(new Date(iso));
 
 export function Tasks() {
   const store = useTasks();
+  const money = useMoney();
+  const bills = useBillTasks(store, money);
   const { tasks, lists, loading, error } = store;
+  // Ticking "Buy dog food ₱450" offers to log the ₱450; tapping Log it opens the expense form, filled in.
+  const [offer, setOffer] = useState<{ amount: number; note: string } | null>(null);
+  const [logging, setLogging] = useState<{ amount: number; note: string } | null>(null);
+  useEffect(() => {
+    if (!offer) return;
+    const timer = window.setTimeout(() => setOffer(null), 10000);
+    return () => window.clearTimeout(timer);
+  }, [offer]);
   const [view, setView] = useState<View>('today');
   const [editing, setEditing] = useState<Task | null>(null);
   const [managing, setManaging] = useState(false);
   const [justCompleted, setJustCompleted] = useState(false);
   const [grouping, setGrouping] = useGrouping();
   const today = useToday();
+
+  // The floating + button puts the cursor in the quick-add box.
+  useEffect(() => {
+    const focus = () => { setView((v) => (v === 'done' ? 'today' : v)); window.setTimeout(() => document.getElementById('quick-title')?.focus(), 30); };
+    window.addEventListener('dirary:add', focus);
+    return () => window.removeEventListener('dirary:add', focus);
+  }, []);
 
   const listIds = useMemo(() => new Set(lists.map((l) => l.id)), [lists]);
   const listById = useMemo(() => new Map(lists.map((l) => [l.id, l])), [lists]);
@@ -33,16 +55,80 @@ export function Tasks() {
   const todayData = useMemo(() => todayView(tasks, today, toLocal), [tasks, today]);
   const coach = todayCoach(todayData, justCompleted);
 
+  // Ticking a task: it shows as checked for a moment, folds away, and only then is saved as done.
+  // Ticking it again during that moment cancels. Leaving the page saves anything still waiting.
+  const [phases, setPhases] = useState<Record<string, Phase>>({});
+  const waiting = useRef(new Map<string, { task: Task; timers: number[] }>());
+  const lastDone = useRef(0);
+  const toggleRef = useRef(bills.toggle);
+  toggleRef.current = bills.toggle;
+  const setPhase = (id: string, phase: Phase | null) => setPhases((all) => {
+    const next = { ...all };
+    if (phase) next[id] = phase; else delete next[id];
+    return next;
+  });
+  useEffect(() => () => {
+    for (const { task, timers } of waiting.current.values()) { timers.forEach(clearTimeout); toggleRef.current(task); }
+    waiting.current.clear();
+  }, []);
+
   function toggle(task: Task) {
-    if (task.status !== 'done') {
-      setJustCompleted(true);
-      window.setTimeout(() => setJustCompleted(false), 2500);
+    if (task.status === 'done') return bills.toggle(task);
+    const pending = waiting.current.get(task.id);
+    if (pending) {
+      pending.timers.forEach(clearTimeout);
+      waiting.current.delete(task.id);
+      setPhase(task.id, null);
+      return;
     }
-    store.toggleTask(task);
+    setJustCompleted(true);
+    window.setTimeout(() => setJustCompleted(false), 2500);
+    setPhase(task.id, 'checked');
+    const timers = [
+      window.setTimeout(() => setPhase(task.id, 'leaving'), CHECKED_MS),
+      window.setTimeout(() => {
+        waiting.current.delete(task.id);
+        setPhase(task.id, null);
+        lastDone.current = Date.now();
+        bills.toggle(task);
+        const amount = bills.isBill(task) || money.accounts.length === 0 ? null : amountInTask(task.title);
+        if (amount) setOffer({ amount, note: taskWithoutAmount(task.title) });
+      }, CHECKED_MS + FOLD_MS),
+    ];
+    waiting.current.set(task.id, { task, timers });
   }
 
+  // New tasks (from the quick-add box or another device) slide in; the ones there on load don't.
+  const known = useRef<Set<string> | null>(null);
+  const [fresh, setFresh] = useState<Set<string>>(new Set());
+  useLayoutEffect(() => {
+    if (loading) return;
+    if (!known.current) { known.current = new Set(tasks.map((t) => t.id)); return; }
+    const added = tasks.filter((t) => !known.current!.has(t.id)).map((t) => t.id);
+    for (const t of tasks) known.current.add(t.id);
+    if (added.length === 0) return;
+    setFresh((cur) => new Set([...cur, ...added]));
+    window.setTimeout(() => setFresh((cur) => { const next = new Set(cur); added.forEach((id) => next.delete(id)); return next; }), 600);
+  }, [tasks, loading]);
+
+  // Finishing the last task due today: confetti out of the progress bar, Ink hops, the bar glows.
+  const progressRef = useRef<HTMLElement>(null);
+  const remaining = todayData.overdue.length + todayData.dueToday.length;
+  const before = useRef(remaining);
+  const [party, setParty] = useState(false);
+  useEffect(() => {
+    const was = before.current;
+    before.current = remaining;
+    if (was > 0 && remaining === 0 && todayData.total > 0 && Date.now() - lastDone.current < 2000) {
+      setParty(true);
+      confettiFrom(progressRef.current?.querySelector('.bar') ?? progressRef.current);
+      window.setTimeout(() => setParty(false), 1400);
+    }
+  }, [remaining, todayData.total]);
+
   const row = (task: Task, showDay: boolean) => (
-    <TaskRow key={task.id} task={task} list={task.list_id ? listById.get(task.list_id) : undefined} today={today} showDay={showDay} onToggle={toggle} onOpen={setEditing} />
+    <TaskRow key={task.id} task={task} list={task.list_id ? listById.get(task.list_id) : undefined} today={today} showDay={showDay}
+      phase={phases[task.id]} fresh={fresh.has(task.id)} onToggle={toggle} onOpen={setEditing} />
   );
 
   let body;
@@ -52,7 +138,7 @@ export function Tasks() {
     const percent = total === 0 ? 0 : Math.round((done / total) * 100);
     body = (
       <>
-        <section className="card progress" aria-label="Today's progress">
+        <section ref={progressRef} className={party ? 'card progress party' : 'card progress'} aria-label="Today's progress">
           <div className="row" style={{ justifyContent: 'space-between', alignItems: 'baseline' }}>
             <p className="display progress-count">{done}<span> of {total} done</span></p>
             <p className="progress-pct">{percent}%</p>
@@ -146,6 +232,16 @@ export function Tasks() {
         />
       )}
       {managing && <ListsDialog lists={lists} onClose={() => setManaging(false)} onAdd={store.addList} onRename={store.renameList} onDelete={store.removeList} />}
+      {offer && (
+        <div className="offer" role="status">
+          <p>Log <strong>{formatPeso(offer.amount)}</strong> for {offer.note}?</p>
+          <button type="button" className="btn primary small" onClick={() => { setLogging(offer); setOffer(null); }}>Log it</button>
+          <button type="button" className="offer-close" aria-label="Not now" onClick={() => setOffer(null)}>
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18" /></svg>
+          </button>
+        </div>
+      )}
+      {logging && <TxDialog tx={null} direction="out" amount={logging.amount} note={logging.note} store={money} onClose={() => setLogging(null)} />}
     </div>
   );
 }
@@ -208,21 +304,35 @@ function Empty({ line }: { line: string }) {
   );
 }
 
-function TaskRow({ task, list, today, showDay, onToggle, onOpen }: {
-  task: Task; list: List | undefined; today: string; showDay: boolean; onToggle: (t: Task) => void; onOpen: (t: Task) => void;
+type Phase = 'checked' | 'leaving';
+/** How long a ticked task stays visible, checked, before folding away; then how long the fold takes. */
+const CHECKED_MS = 340;
+const FOLD_MS = 220;
+
+function TaskRow({ task, list, today, showDay, phase, fresh, onToggle, onOpen }: {
+  task: Task; list: List | undefined; today: string; showDay: boolean; phase?: Phase; fresh?: boolean; onToggle: (t: Task) => void; onOpen: (t: Task) => void;
 }) {
-  const done = task.status === 'done';
+  const done = task.status === 'done' || phase !== undefined;
+  // To fold a row shut, pin its current height first so the browser has a number to shrink from.
+  const ref = useRef<HTMLLIElement>(null);
+  useLayoutEffect(() => {
+    const el = ref.current;
+    if (!el || phase !== 'leaving') return;
+    el.style.height = `${el.offsetHeight}px`;
+    void el.offsetHeight;
+    el.classList.add('folding');
+  }, [phase]);
   const overdue = !done && task.due_date !== null && task.due_date < today;
   const repeat = asRecurrence(task.recurrence_rule);
   const meta = [list?.name, repeat ? RECURRENCE_LABEL[repeat] : null, task.remind_at ? 'Reminder set' : null].filter(Boolean).join(' · ');
   const when = [showDay && task.due_date ? dayLabel(task.due_date, today) : null, task.due_time ? timeLabel(task.due_time) : null].filter(Boolean).join(', ');
   const away = done ? null : fromNow(task.due_date, task.due_time);
   return (
-    <li className={done ? 'task done' : 'task'}>
+    <li ref={ref} className={['task', done && 'done', phase && 'ticked', fresh && 'fresh'].filter(Boolean).join(' ')}>
       <button
         type="button" role="checkbox" aria-checked={done} aria-label={`${task.title}, mark ${done ? 'not done' : 'done'}`}
         className={`check p${task.priority}`} onClick={() => onToggle(task)}>
-        <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M3 8.5 6.5 12 13 4.5" /></svg>
+        <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M3 8.5 6.5 12 13 4.5" pathLength={1} /></svg>
       </button>
       <button type="button" className="task-main" onClick={() => onOpen(task)} aria-label={`Edit ${task.title}`}>
         <span className="task-title">{task.title}</span>
@@ -275,10 +385,8 @@ function QuickAdd({ defaultDate, listId, placeholder, lists, onAdd }: { defaultD
     <form className="quick" onSubmit={submit}>
       <label className="sr-only" htmlFor="quick-title">New task</label>
       <input id="quick-title" className="input grow" value={text} maxLength={200} placeholder={placeholder} onChange={(e) => setText(e.target.value)} autoComplete="off" aria-describedby="quick-hint" />
-      <label className="sr-only" htmlFor="quick-date">Due date</label>
-      <input id="quick-date" className="input date" type="date" value={date} onClick={openPicker} onChange={(e) => setDate(e.target.value)} />
-      <label className="sr-only" htmlFor="quick-time">Time</label>
-      <input id="quick-time" className="input date" type="time" value={time} onClick={openPicker} onChange={(e) => setTime(e.target.value)} />
+      <DatePicker className="date" label="Due date" hideLabel value={date} onChange={setDate} />
+      <TimePicker className="date" label="Time" hideLabel value={time} onChange={setTime} />
       <label className="sr-only" htmlFor="quick-urgency">Urgency</label>
       <select id="quick-urgency" className={`input urgency-pick u${priority}`} value={priority} onChange={(e) => setPriority(Number(e.target.value) as Priority)}>
         {PRIORITIES.map((p) => <option key={p} value={p}>{p === 0 ? 'Urgency' : PRIORITY_LABEL[p]}</option>)}
@@ -326,12 +434,8 @@ function TaskDialog({ task, lists, onClose, onSave, onDelete }: { task: Task; li
           <textarea className="input area" value={notes} maxLength={2000} rows={3} onChange={(e) => setNotes(e.target.value)} />
         </label>
         <div className="two">
-          <label className="field">Due date
-            <input className="input" type="date" value={date} onClick={openPicker} onChange={(e) => { setDate(e.target.value); if (!e.target.value) setTime(''); }} />
-          </label>
-          <label className="field">Time
-            <input className="input" type="time" value={time} onClick={openPicker} onChange={(e) => { setTime(e.target.value); if (e.target.value && !date) setDate(localDate()); if (e.target.value && reminder === 'none') setReminder('at'); }} />
-          </label>
+          <DatePicker label="Due date" placeholder="No date" value={date} onChange={(v) => { setDate(v); if (!v) setTime(''); }} />
+          <TimePicker label="Time" placeholder="No time" value={time} onChange={(v) => { setTime(v); if (v && !date) setDate(localDate()); if (v && reminder === 'none') setReminder('at'); }} />
         </div>
         <div className="two">
           <label className="field">Urgency

@@ -1,12 +1,17 @@
 import { createElement, useEffect, useRef, type ComponentType, type ReactElement } from 'react';
 import { AccessibilityInfo, Animated, Easing } from 'react-native';
 import { Circle, Defs, Ellipse, LinearGradient, Path, RadialGradient, Stop, Svg } from 'react-native-svg';
-import { createMascot, type MascotProps } from '@dirary/ui';
+import { createMascot, createMascotPaws, type MascotProps } from '@dirary/ui';
 
 type Primitive = ComponentType<any>;
 
 /** Ink, drawn with react-native-svg from the shared drawing in @dirary/ui. */
 export const StaticMascot = createMascot<Primitive, ReactElement>(createElement, {
+  Svg, Path, Circle, Ellipse, Defs, RadialGradient, LinearGradient, Stop,
+});
+
+/** Ink's front paws, drawn in front of a card when he stands up to look over it. */
+export const MascotPaws = createMascotPaws<Primitive, ReactElement>(createElement, {
   Svg, Path, Circle, Ellipse, Defs, RadialGradient, LinearGradient, Stop,
 });
 

@@ -1,4 +1,4 @@
-import { NavLink, Route, Routes } from 'react-router-dom';
+import { NavLink, Route, Routes, useLocation, useNavigate } from 'react-router-dom';
 import { HealthIcon, MoneyIcon, TasksIcon, TodayIcon } from './icons';
 import { Mascot } from './Mascot';
 import { ComingSoon } from './pages/ComingSoon';
@@ -14,6 +14,18 @@ export function App() {
   if (!supabase) return <SetupNeeded />;
   if (session === undefined) return null;
   if (session === null) return <SignIn />;
+  return <Shell />;
+}
+
+function Shell() {
+  const { pathname } = useLocation();
+  const navigate = useNavigate();
+  /** The + button adds to the screen you're on; from Today or Health it starts a task. */
+  function add() {
+    const here = pathname === '/tasks' || pathname === '/money';
+    if (!here) navigate('/tasks');
+    window.setTimeout(() => window.dispatchEvent(new Event('dirary:add')), here ? 0 : 80);
+  }
 
   return (
     <div className="shell">
@@ -24,6 +36,9 @@ export function App() {
         </div>
         <NavLink to="/" end><TodayIcon />Today</NavLink>
         <NavLink to="/tasks"><TasksIcon />Tasks</NavLink>
+        <button type="button" className="fab" aria-label={pathname === '/money' ? 'Add a transaction' : 'Add a task'} onClick={add}>
+          <svg viewBox="0 0 28 28" aria-hidden="true"><path d="M14 5v18M5 14h18" /></svg>
+        </button>
         <NavLink to="/money"><MoneyIcon />Money</NavLink>
         <NavLink to="/health"><HealthIcon />Health</NavLink>
         <button className="link" type="button" style={{ marginTop: 'auto', textAlign: 'left' }} onClick={() => supabase?.auth.signOut()}>
