@@ -312,3 +312,16 @@ input[type='date'].input, input[type='time'].input { cursor: pointer; }
 .danger-zone .note { margin: 2px 0 0; }
 .btn.danger.solid { background: var(--red); border-color: var(--red); color: var(--night); }
 .btn.danger.solid:disabled { opacity: 0.45; }
+
+/* ---- One account at a time ---- */
+.wallet-card[aria-pressed='true'] { transform: translateY(-6px); box-shadow: 0 0 0 2px var(--text); }
+.wallet-cards.filtering .wallet-card[aria-pressed='false'] { opacity: 0.45; }
+.wallet-filter { position: relative; display: flex; flex-wrap: wrap; align-items: center; gap: 0 4px; margin: 0; color: var(--muted); font-size: 14px; }
+.wallet-filter strong { color: var(--text); margin: 0 4px; }
+.wallet-filter .link { color: var(--inkBlue); padding: 6px; }
+.ledger { scroll-margin-top: 16px; }
+.ledger-head { margin-bottom: 0; }
+.ledger-head .group-title { color: var(--text); }
+.day-head { display: flex; justify-content: space-between; gap: 8px; padding-right: 4px; }
+.day-balance { font-weight: 600; letter-spacing: 0; text-transform: none; color: var(--muted); font-variant-numeric: tabular-nums; }
+@media (prefers-reduced-motion: no-preference) { .wallet-card { transition: transform 160ms ease-out, opacity 160ms ease-out; } }

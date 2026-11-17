@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState, type FormEvent, type ReactNode } from 'react';
 import {
-  INSTITUTIONS, INSTITUTION_LABEL, LIST_COLORS, TransactionDraft, accountBalance, budgetCoach, dayLabel, findTransferPairs, formatPeso, guessMapping,
+  INSTITUTIONS, INSTITUTION_LABEL, LIST_COLORS, TransactionDraft, accountBalance, budgetCoach, dayLabel, endOfDayBalances, findTransferPairs, formatPeso, guessMapping,
   dueLabel, fixedThisMonth, formatPesoShort, monthName, monthlyRecap, recapLine, localDate, monthSummary, needsReview, parseAmount, parseCsv, parseMoneyQuickAdd, recentTransactions, rowsToTransactions, safeToSpend, spendCoach,
   type Account, type Category, type CsvMapping, type FixedExpense, type Institution, type ListColor, type Transaction,
 } from '@dirary/shared';
@@ -48,7 +48,12 @@ export function Money() {
   const inbox = useMemo(() => needsReview(transactions), [transactions]);
   const pairs = useMemo(() => findTransferPairs(inbox), [inbox]);
   const paired = new Set(pairs.flatMap((p) => [p.out.id, p.into.id]));
-  const recent = useMemo(() => recentTransactions(transactions, 60), [transactions]);
+  // Tapping an account card shows only that account's transactions, with its balance at the end of each day.
+  const [only, setOnly] = useState<string | null>(null);
+  const shown = accounts.find((a) => a.id === only) ?? null;
+  const recent = useMemo(() => recentTransactions(shown ? transactions.filter((t) => t.account_id === shown.id) : transactions, shown ? 300 : 60), [transactions, shown]);
+  const dayBalances = useMemo(() => (shown ? endOfDayBalances(shown, transactions, toLocal) : null), [shown, transactions]);
+  const showLedger = () => document.getElementById('ledger')?.scrollIntoView({ block: 'start', behavior: 'smooth' });
   const accountById = useMemo(() => new Map(accounts.map((a) => [a.id, a])), [accounts]);
   const categoryById = useMemo(() => new Map(categories.map((c) => [c.id, c])), [categories]);
 
@@ -121,11 +126,11 @@ export function Money() {
           </section>
 
           <section className="wallet" aria-labelledby="wallet-title">
-            <ul className="wallet-cards" aria-label="Accounts">
+            <ul className={shown ? 'wallet-cards filtering' : 'wallet-cards'} aria-label="Accounts. Tap one to see only its transactions">
               {accounts.map((a) => (
                 <li key={a.id}>
-                  <button type="button" className={`wallet-card ${a.institution}`} onClick={() => setDialog({ kind: 'tx', tx: null, direction: 'in', accountId: a.id })}
-                    aria-label={`${a.name}, ${formatPeso(accountBalance(a, transactions))}. Add money to ${a.name}`}>
+                  <button type="button" className={`wallet-card ${a.institution}`} aria-pressed={only === a.id} onClick={() => setOnly((cur) => (cur === a.id ? null : a.id))}
+                    aria-label={`${a.name}, ${formatPeso(accountBalance(a, transactions))}. Show only ${a.name} transactions`}>
                     <span className="wallet-card-name">{a.name}</span>
                     <span className="wallet-card-balance">{formatPeso(accountBalance(a, transactions))}</span>
                   </button>
@@ -136,8 +141,15 @@ export function Money() {
               <span className="wallet-ink" aria-hidden="true"><Mascot mood="happy" size={132} /></span>
               <h2 id="wallet-title" className="card-label">Balance</h2>
               <p className="display wallet-total">{formatPeso(total)}</p>
+              {shown && (
+                <p className="wallet-filter" role="status">
+                  Showing <strong>{shown.name}</strong> only.
+                  <button type="button" className="link" onClick={showLedger}>See its transactions</button>
+                  <button type="button" className="link" onClick={() => setOnly(null)}>Show all</button>
+                </p>
+              )}
               <div className="row wallet-actions">
-                <button type="button" className="chip add-money" onClick={() => setDialog({ kind: 'tx', tx: null, direction: 'in' })} disabled={accounts.length === 0}>+ Add money</button>
+                <button type="button" className="chip add-money" onClick={() => setDialog({ kind: 'tx', tx: null, direction: 'in', accountId: shown?.id })} disabled={accounts.length === 0}>{shown ? `+ Add money to ${shown.name}` : '+ Add money'}</button>
                 <button type="button" className="chip" onClick={() => setDialog({ kind: 'transfer' })} disabled={accounts.length < 2}>Transfer</button>
                 <button type="button" className="chip" onClick={() => setDialog({ kind: 'accounts' })}>Accounts</button>
                 <button type="button" className="chip" onClick={() => setDialog({ kind: 'import' })} disabled={accounts.length === 0}>Import statement</button>
@@ -254,8 +266,16 @@ export function Money() {
 
           <Recap months={recap} />
 
-          <section className="group" aria-label="Recent transactions">
-            {days.length === 0 ? (
+          <section className="group ledger" id="ledger" aria-label={shown ? `${shown.name} transactions` : 'Recent transactions'}>
+            {shown && (
+              <div className="group-bar ledger-head">
+                <h2 className="group-title">{shown.name} · {formatPeso(accountBalance(shown, transactions))} now</h2>
+                <button type="button" className="chip ghost" onClick={() => setOnly(null)}>Show all accounts</button>
+              </div>
+            )}
+            {shown && days.length === 0 ? (
+              <p className="note muted">No transactions in {shown.name} yet. Its balance is the opening balance, {formatPeso(shown.opening_balance_centavos)}.</p>
+            ) : days.length === 0 ? (
               <section className="card empty">
                 <Mascot mood="sleepy" size={128} />
                 {/* The quick-add box sits above this list on phones and in the other column on wide screens, so point at it with a button, not a direction. */}
@@ -264,7 +284,10 @@ export function Money() {
               </section>
             ) : days.map((d) => (
               <div key={d.date} className="group">
-                <h2 className="group-title">{dayLabel(d.date, today)}</h2>
+                <h2 className="group-title day-head">
+                  {dayLabel(d.date, today)}
+                  {dayBalances?.has(d.date) && <span className="day-balance">{formatPeso(dayBalances.get(d.date)!)} at end of day</span>}
+                </h2>
                 <ul className="tasks">{d.rows.map((t) => row(t))}</ul>
               </div>
             ))}

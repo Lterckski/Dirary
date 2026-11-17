@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { parseNotification } from './capture';
 import {
-  accountBalance, budgetCoach, findTransferPairs, formatPeso, monthSummary, parseAmount, parseMoneyQuickAdd, spentOn,
+  accountBalance, budgetCoach, endOfDayBalances, findTransferPairs, formatPeso, monthSummary, parseAmount, parseMoneyQuickAdd, spentOn,
   type Account, type Category, type Transaction,
 } from './money';
 
@@ -147,5 +147,21 @@ describe('statement import', () => {
   it('reads a single signed amount column', () => {
     const { ok } = rowsToTransactions([['2026-11-17', 'Coffee', '(120.00)'], ['2026-11-17', 'Refund', '120.00']], { date: 0, description: 1, amount: 2 }, 'acc');
     expect(ok.map((r) => r.direction)).toEqual(['out', 'in']);
+  });
+});
+
+describe('end-of-day balances', () => {
+  it('runs one account forward from its opening balance, day by day', () => {
+    const g = accounts[0]!; // GCash, opens at ₱500
+    const rows = [
+      tx({ account_id: 'gcash', amount_centavos: 10000, occurred_at: '2026-11-02T03:00:00Z' }),
+      tx({ account_id: 'gcash', amount_centavos: 100000, direction: 'in', occurred_at: '2026-11-02T09:00:00Z' }),
+      tx({ account_id: 'gcash', amount_centavos: 25000, occurred_at: '2026-11-01T05:00:00Z' }),
+      tx({ account_id: 'cash', amount_centavos: 99900, occurred_at: '2026-11-02T05:00:00Z' }),
+      tx({ account_id: 'gcash', amount_centavos: 99900, status: 'needs_review', occurred_at: '2026-11-03T05:00:00Z' }),
+    ];
+    const days = endOfDayBalances(g, rows, (iso) => iso.slice(0, 10));
+    expect([...days]).toEqual([['2026-11-01', 25000], ['2026-11-02', 115000]]);
+    expect(days.get('2026-11-02')).toBe(accountBalance(g, rows));
   });
 });

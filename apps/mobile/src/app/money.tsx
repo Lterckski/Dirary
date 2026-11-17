@@ -1,10 +1,10 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState, type ComponentRef } from 'react';
 import { AppState, Pressable, ScrollView, Share, TextInput, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Path, Svg } from 'react-native-svg';
 import { colors, radius, space } from '@dirary/ui';
 import {
-  accountBalance, budgetCoach, dayLabel, dueLabel, findTransferPairs, fixedThisMonth, formatPeso, formatPesoShort, monthName, monthlyRecap, recapLine, localDate, monthSummary, needsReview, parseMoneyQuickAdd, recentTransactions, safeToSpend, spendCoach,
+  accountBalance, budgetCoach, dayLabel, endOfDayBalances, dueLabel, findTransferPairs, fixedThisMonth, formatPeso, formatPesoShort, monthName, monthlyRecap, recapLine, localDate, monthSummary, needsReview, parseMoneyQuickAdd, recentTransactions, safeToSpend, spendCoach,
   type Institution, type MonthRecap, type Transaction,
 } from '@dirary/shared';
 
@@ -54,7 +54,14 @@ export default function MoneyScreen() {
   const inbox = useMemo(() => needsReview(transactions), [transactions]);
   const pairs = useMemo(() => findTransferPairs(inbox), [inbox]);
   const paired = new Set(pairs.flatMap((p) => [p.out.id, p.into.id]));
-  const recent = useMemo(() => recentTransactions(transactions, 40), [transactions]);
+  // Tapping an account card shows only that account's transactions, with its balance at the end of each day.
+  const [only, setOnly] = useState<string | null>(null);
+  const shown = accounts.find((a) => a.id === only) ?? null;
+  const recent = useMemo(() => recentTransactions(shown ? transactions.filter((t) => t.account_id === shown.id) : transactions, shown ? 300 : 40), [transactions, shown]);
+  const dayBalances = useMemo(() => (shown ? endOfDayBalances(shown, transactions, toLocal) : null), [shown, transactions]);
+  const scroller = useRef<ComponentRef<typeof ScrollView>>(null);
+  const ledgerY = useRef(0);
+  const showLedger = () => scroller.current?.scrollTo({ y: Math.max(0, ledgerY.current - space[4]), animated: true });
   const accountById = useMemo(() => new Map(accounts.map((a) => [a.id, a])), [accounts]);
   const categoryById = useMemo(() => new Map(categories.map((c) => [c.id, c])), [categories]);
 
@@ -99,7 +106,7 @@ export default function MoneyScreen() {
 
   return (
     <View style={styles.screen}>
-      <ScrollView contentContainerStyle={{ paddingBottom: TAB_BAR_CLEARANCE }} keyboardShouldPersistTaps="handled">
+      <ScrollView ref={scroller} contentContainerStyle={{ paddingBottom: TAB_BAR_CLEARANCE }} keyboardShouldPersistTaps="handled">
         <View style={{ backgroundColor: colors.inkBlue, borderBottomLeftRadius: 36, borderBottomRightRadius: 36, paddingTop: insets.top + space[4], paddingHorizontal: space[5], paddingBottom: 72 }}>
           <Text variant="small" weight="bold" style={{ color: colors.onInkBlue, letterSpacing: 1.3 }}>{now.toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' }).toUpperCase()}</Text>
           <Text variant="title" accessibilityRole="header" style={{ color: colors.onInkBlue }}>Hello, {GREETING_NAME}!</Text>
@@ -147,9 +154,9 @@ export default function MoneyScreen() {
         <View>
           <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 6, paddingHorizontal: 14, paddingTop: 8, flexGrow: 1 }}>
             {accounts.map((a, i) => (
-              <Pressable key={a.id} accessibilityRole="button" accessibilityLabel={`${a.name}, ${formatPeso(accountBalance(a, transactions))}. Add money to ${a.name}`}
-                onPress={() => setSheet({ kind: 'tx', tx: null, direction: 'in', accountId: a.id })}
-                style={({ pressed }) => ({ opacity: pressed ? 0.85 : 1, flexGrow: 1, minWidth: 112, marginTop: i % 2 ? 8 : 0, paddingTop: space[3], paddingHorizontal: 14, paddingBottom: 40, borderTopLeftRadius: 16, borderTopRightRadius: 16, backgroundColor: CARD_COLOR[a.institution], gap: 2 })}>
+              <Pressable key={a.id} accessibilityRole="button" accessibilityState={{ selected: only === a.id }} accessibilityLabel={`${a.name}, ${formatPeso(accountBalance(a, transactions))}. Show only ${a.name} transactions`}
+                onPress={() => setOnly((cur) => (cur === a.id ? null : a.id))}
+                style={({ pressed }) => ({ opacity: pressed ? 0.85 : shown && shown.id !== a.id ? 0.45 : 1, flexGrow: 1, minWidth: 112, marginTop: (i % 2 ? 8 : 0) + (only === a.id ? -6 : 0), borderWidth: only === a.id ? 2 : 0, borderBottomWidth: 0, borderColor: colors.text, paddingTop: space[3], paddingHorizontal: 14, paddingBottom: 40, borderTopLeftRadius: 16, borderTopRightRadius: 16, backgroundColor: CARD_COLOR[a.institution], gap: 2 })}>
                 <Text variant="small" weight="bold" numberOfLines={1} style={{ color: colors.onInkBlue }}>{a.name}</Text>
                 <Text variant="label" weight="bold" numberOfLines={1} style={[NUM, { color: colors.onInkBlue }]}>{formatPeso(accountBalance(a, transactions))}</Text>
               </Pressable>
@@ -162,10 +169,17 @@ export default function MoneyScreen() {
             </View>
             <Text variant="small" weight="bold" style={LABEL}>BALANCE</Text>
             <Text variant="title" style={NUM} adjustsFontSizeToFit numberOfLines={1}>{formatPeso(total)}</Text>
+            {shown && (
+              <View style={[styles.row, { flexWrap: 'wrap', gap: space[1] }]} accessibilityLiveRegion="polite">
+                <Text variant="label" muted>Showing <Text variant="label" weight="bold">{shown.name}</Text> only.</Text>
+                <Pressable accessibilityRole="button" onPress={showLedger} style={{ minHeight: 44, justifyContent: 'center', paddingHorizontal: space[1] }}><Text variant="label" weight="semi" style={{ color: colors.inkBlue }}>See its transactions</Text></Pressable>
+                <Pressable accessibilityRole="button" onPress={() => setOnly(null)} style={{ minHeight: 44, justifyContent: 'center', paddingHorizontal: space[1] }}><Text variant="label" weight="semi" style={{ color: colors.inkBlue }}>Show all</Text></Pressable>
+              </View>
+            )}
             <View style={[styles.row, { flexWrap: 'wrap', gap: space[2], marginTop: space[2] }]}>
-              <Pressable accessibilityRole="button" onPress={() => setSheet({ kind: 'tx', tx: null, direction: 'in' })}
+              <Pressable accessibilityRole="button" onPress={() => setSheet({ kind: 'tx', tx: null, direction: 'in', accountId: shown?.id })}
                 style={{ minHeight: 44, paddingHorizontal: space[4], borderRadius: 22, backgroundColor: colors.inkBlue, justifyContent: 'center' }}>
-                <Text variant="label" weight="bold" style={{ color: colors.onInkBlue }}>+ Add money</Text>
+                <Text variant="label" weight="bold" style={{ color: colors.onInkBlue }}>{shown ? `+ Add money to ${shown.name}` : '+ Add money'}</Text>
               </Pressable>
               {accounts.length > 1 && <Chip label="Transfer" onPress={() => setSheet({ kind: 'transfer' })} />}
               <Chip label="Accounts" onPress={() => setSheet({ kind: 'accounts' })} />
@@ -294,12 +308,26 @@ export default function MoneyScreen() {
 
         <Recap months={recap} />
 
-        {days.length === 0 ? (
+        <View onLayout={(e) => { ledgerY.current = e.nativeEvent.layout.y; }} style={{ gap: space[5] }}>
+        {shown && (
+          <View style={[styles.row, { justifyContent: 'space-between', flexWrap: 'wrap' }]}>
+            <Text weight="bold" style={NUM}>{shown.name} · {formatPeso(accountBalance(shown, transactions))} now</Text>
+            <Chip dashed label="Show all accounts" onPress={() => setOnly(null)} />
+          </View>
+        )}
+        {shown && days.length === 0 ? (
+          <Text variant="label" muted>No transactions in {shown.name} yet. Its balance is the opening balance, {formatPeso(shown.opening_balance_centavos)}.</Text>
+        ) : days.length === 0 ? (
           <Card style={{ alignItems: 'center', paddingVertical: space[8] }}>
             <Mascot mood="sleepy" size={128} />
             <Text muted style={{ textAlign: 'center' }}>No transactions yet. Add one above.</Text>
           </Card>
-        ) : days.map((d) => <Group key={d.date} title={dayLabel(d.date, today)}>{d.rows.map((t) => row(t))}</Group>)}
+        ) : days.map((d) => (
+          <Group key={d.date} title={dayBalances?.has(d.date) ? `${dayLabel(d.date, today)} · ${formatPeso(dayBalances.get(d.date)!)} at end of day` : dayLabel(d.date, today)}>
+            {d.rows.map((t) => row(t))}
+          </Group>
+        ))}
+        </View>
         </View>
       </ScrollView>
 

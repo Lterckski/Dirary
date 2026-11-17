@@ -172,6 +172,21 @@ export function needsReview(transactions: readonly Transaction[]): Transaction[]
   return live(transactions).filter((t) => t.status === 'needs_review').sort((a, b) => (a.occurred_at < b.occurred_at ? 1 : -1));
 }
 
+/**
+ * One account's balance at the end of each day it had activity, for checking against a bank statement.
+ * Keyed by "YYYY-MM-DD"; counts the same transactions as accountBalance.
+ */
+export function endOfDayBalances(account: Account, transactions: readonly Transaction[], toLocalDate: (iso: string) => string): Map<string, number> {
+  const rows = transactions.filter((t) => counted(t) && t.account_id === account.id).sort((a, b) => (a.occurred_at < b.occurred_at ? -1 : 1));
+  const out = new Map<string, number>();
+  let balance = account.opening_balance_centavos;
+  for (const t of rows) {
+    balance += signed(t);
+    out.set(toLocalDate(t.occurred_at), balance);
+  }
+  return out;
+}
+
 export function recentTransactions(transactions: readonly Transaction[], limit = 50): Transaction[] {
   return transactions.filter(counted).sort((a, b) => (a.occurred_at < b.occurred_at ? 1 : -1)).slice(0, limit);
 }
