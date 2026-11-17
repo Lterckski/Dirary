@@ -37,3 +37,4 @@ png(framed('happy', { bg: colors.inkBlue, scale: 0.9, round: true }), 192, 'apps
 png(framed('coach', { bg: colors.inkBlue, scale: 0.9 }), 400, 'apps/mobile/assets/widgets/today-spend-preview.png');
 png(framed('cheer', { bg: colors.inkBlue, scale: 0.9, round: true }), 400, 'apps/mobile/assets/widgets/food-today-preview.png');
 png(framed('coach', { bg: colors.inkBlue, scale: 0.9, round: true }), 400, 'apps/mobile/assets/widgets/workout-today-preview.png');
+png(framed('happy', { bg: colors.inkBlue, scale: 0.9, round: true }), 400, 'apps/mobile/assets/widgets/day-preview.png');

@@ -145,3 +145,90 @@ export function WorkoutTodayWidget({ data }: { data: WidgetData }) {
     </FlexWidget>
   );
 }
+
+/** One quick-add button on the Day widget. */
+function AddButton({ label, uri }: { label: string; uri: string }) {
+  return (
+    <FlexWidget clickAction="OPEN_URI" clickActionData={{ uri }}
+      style={{ flex: 1, height: 40, borderRadius: 20, backgroundColor: colors.raised, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', flexGap: 4 }}>
+      <TextWidget text="+" style={{ fontSize: 17, fontWeight: '800', color: colors.inkBlue }} />
+      <TextWidget text={label} maxLines={1} style={{ fontSize: 13, fontWeight: '700', color: colors.text }} />
+    </FlexWidget>
+  );
+}
+
+/** One figure on the Day widget. */
+function Stat({ label, value, color = colors.text, uri }: { label: string; value: string; color?: string; uri: string }) {
+  return (
+    <FlexWidget clickAction="OPEN_URI" clickActionData={{ uri }}
+      style={{ flex: 1, flexDirection: 'column', padding: 10, borderRadius: 16, backgroundColor: colors.raised, flexGap: 2 }}>
+      <TextWidget text={label} maxLines={1} style={{ fontSize: 11, fontWeight: '600', color: colors.muted }} />
+      <TextWidget text={value} maxLines={1} truncate="END" style={{ fontSize: 15, fontWeight: '800', color: color as `#${string}` }} />
+    </FlexWidget>
+  );
+}
+
+const DAY_ROWS = 3;
+
+/** 4×4 widget: the whole day at a glance. Ink's line, the top tasks to tick, money, food and the workout, and quick adds. */
+export function DayWidget({ data }: { data: WidgetData }) {
+  const rows = data.open.slice(0, DAY_ROWS);
+  const more = data.open.length - rows.length;
+  const kcalLeft = data.kcalTarget === null ? null : Math.round(data.kcalTarget - data.kcalEaten);
+  const whole = (c: number) => formatPeso(Math.trunc(c / 100) * 100);
+  return (
+    <FlexWidget
+      clickAction="OPEN_URI" clickActionData={{ uri: 'dirary://' }}
+      style={{ height: 'match_parent', width: 'match_parent', flexDirection: 'column', backgroundColor: colors.surface, borderRadius: 28, padding: 14, flexGap: 10 }}>
+      <FlexWidget style={{ width: 'match_parent', flexDirection: 'row', alignItems: 'center', flexGap: 10 }}>
+        <FlexWidget style={{ width: 44, height: 44, borderRadius: 22, backgroundColor: colors.inkBlue, alignItems: 'center', justifyContent: 'center' }}>
+          <ImageWidget image={INK[data.dayMood]} imageWidth={40} imageHeight={40} />
+        </FlexWidget>
+        <FlexWidget style={{ flex: 1, flexDirection: 'column' }}>
+          <TextWidget text={data.open.length > 0 ? `Today · ${data.open.length} left` : data.total > 0 ? 'Today · all done' : 'Today'} maxLines={1} style={{ fontSize: 16, fontWeight: '800', color: colors.text }} />
+          <TextWidget text={data.dayLine} maxLines={2} truncate="END" style={{ fontSize: 12, color: colors.muted }} />
+        </FlexWidget>
+      </FlexWidget>
+
+      <FlexWidget style={{ width: 'match_parent', flex: 1, flexDirection: 'column', flexGap: 2 }}>
+        {rows.length === 0 ? (
+          <TextWidget text={data.total > 0 ? 'Everything due today is done.' : 'Nothing due today.'} style={{ fontSize: 14, color: colors.muted }} />
+        ) : (
+          rows.map((task) => (
+            <FlexWidget key={task.id} style={{ width: 'match_parent', flexDirection: 'row', alignItems: 'center', flexGap: 8 }}>
+              <FlexWidget clickAction="TOGGLE_TASK" clickActionData={{ id: task.id }} style={{ width: 36, height: 36, alignItems: 'center', justifyContent: 'center' }}>
+                <FlexWidget style={{ width: 22, height: 22, borderRadius: 7, borderWidth: 2, borderColor: (EDGE[task.priority] ?? colors.inkBlue) as `#${string}` }} />
+              </FlexWidget>
+              <FlexWidget style={{ flex: 1 }}>
+                <TextWidget text={task.title} maxLines={1} truncate="END" style={{ fontSize: 14, fontWeight: '600', color: colors.text }} />
+              </FlexWidget>
+              {task.due_time ? <TextWidget text={timeLabel(task.due_time)} style={{ fontSize: 12, fontWeight: '600', color: colors.muted }} /> : null}
+            </FlexWidget>
+          ))
+        )}
+        {more > 0 ? <TextWidget text={`+${more} more`} style={{ fontSize: 12, color: colors.muted }} /> : null}
+      </FlexWidget>
+
+      <FlexWidget style={{ width: 'match_parent', flexDirection: 'row', flexGap: 8 }}>
+        <Stat uri="dirary://money"
+          label={data.safeToday === null ? 'Spent today' : data.safeToday < 0 ? 'Over today' : 'Safe today'}
+          value={data.safeToday === null ? whole(data.spentToday) : whole(Math.abs(data.safeToday))}
+          color={data.safeToday !== null && data.safeToday < 0 ? colors.red : colors.text} />
+        <Stat uri="dirary://health"
+          label={kcalLeft === null ? 'Eaten' : kcalLeft < 0 ? 'kcal over' : 'kcal left'}
+          value={formatKcal(kcalLeft === null ? data.kcalEaten : Math.abs(kcalLeft))}
+          color={kcalLeft !== null && kcalLeft < 0 ? colors.red : colors.text} />
+        <Stat uri="dirary://health?tab=workouts"
+          label={data.workoutDone ? 'Workout done' : 'Workout'}
+          value={data.workoutName ?? 'Rest day'}
+          color={data.workoutDone ? colors.inkBlue : colors.text} />
+      </FlexWidget>
+
+      <FlexWidget style={{ width: 'match_parent', flexDirection: 'row', flexGap: 8 }}>
+        <AddButton label="Task" uri="dirary://tasks?add=1" />
+        <AddButton label="Expense" uri="dirary://money?add=1" />
+        <AddButton label="Food" uri="dirary://health?log=1" />
+      </FlexWidget>
+    </FlexWidget>
+  );
+}

@@ -45,6 +45,18 @@
         {
           "widgets": [
             {
+              "name": "Day",
+              "label": "Your day",
+              "description": "Tasks, money, food and your workout at a glance, with quick adds.",
+              "minWidth": "250dp",
+              "minHeight": "250dp",
+              "targetCellWidth": 4,
+              "targetCellHeight": 4,
+              "resizeMode": "horizontal|vertical",
+              "previewImage": "./assets/widgets/day-preview.png",
+              "updatePeriodMillis": 1800000
+            },
+            {
               "name": "TodayTasks",
               "label": "Today's tasks",
               "description": "Tick off today's tasks and add new ones.",

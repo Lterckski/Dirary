@@ -1,5 +1,5 @@
-import { addDays, budgetCoach, currentGoals, dayTotals, foodCoach, localDate, monthSummary, planOf, routineMinutes, spentOn, todayCoach, todayView, todaysWorkout, type InkMood, type Task } from '@dirary/shared';
-import { readCategories, readFoodLogs, readHealthGoals, readRoutines, readTasks, readTransactions, readWorkoutSessions } from '@/lib/db';
+import { addDays, budgetCoach, currentGoals, currentPlan, dayCoach, dayTotals, fixedThisMonth, foodCoach, formatPeso, localDate, monthSummary, planOf, routineMinutes, safeToSpend, spentOn, todayCoach, todayView, todaysWorkout, type InkMood, type Task } from '@dirary/shared';
+import { readCategories, readFixedExpenses, readFoodLogs, readHealthGoals, readMoneyPlans, readRoutines, readTasks, readTransactions, readWorkoutSessions } from '@/lib/db';
 import { todaysSteps } from '@/lib/steps';
 
 export interface WidgetData {
@@ -24,6 +24,10 @@ export interface WidgetData {
   workoutDone: boolean;
   workoutLine: string;
   steps: number | null;
+  /** The Day widget: Ink's line across all three modules, and today's safe-to-spend (null with no monthly budget). */
+  dayMood: InkMood;
+  dayLine: string;
+  safeToday: number | null;
 }
 
 /** What the widgets show, read straight from the phone's database so it works with the app closed. */
@@ -45,6 +49,13 @@ export async function widgetData(): Promise<WidgetData> {
   const [routines, sessions] = await Promise.all([readRoutines().catch(() => []), readWorkoutSessions(addDays(today, -1)).catch(() => [])]);
   const workout = todaysWorkout(routines, sessions, today);
   const plan = workout.routine ? planOf(workout.routine) : [];
+  const [fixedRows, plans] = await Promise.all([readFixedExpenses().catch(() => []), readMoneyPlans().catch(() => [])]);
+  const safe = safeToSpend(currentPlan(plans), fixedRows, transactions, today, toLocal);
+  const whole = (c: number) => formatPeso(Math.trunc(c / 100) * 100);
+  const day = dayCoach({
+    tasks: view, safe, fixed: fixedThisMonth(fixedRows, transactions, today, toLocal), food, goals, hour: now.getHours(),
+    workout: { name: workout.session?.name ?? workout.routine?.name ?? null, done: !!workout.session?.done_at, started: !!workout.session?.started_at },
+  }, whole);
   const steps = await todaysSteps().then((s) => (s.kind === 'ok' ? s.steps : null)).catch(() => null);
 
   return {
@@ -58,5 +69,6 @@ export async function widgetData(): Promise<WidgetData> {
     workoutDone: !!workout.session?.done_at,
     workoutLine: workout.session?.done_at ? 'Done. Nice work.' : plan.length ? `${plan.length} exercise${plan.length === 1 ? '' : 's'} · about ${routineMinutes(plan)} min` : workout.session ? 'Under way' : 'Recovery counts too',
     steps,
+    dayMood: day.mood, dayLine: day.line, safeToday: safe.ready ? safe.safeToday : null,
   };
 }

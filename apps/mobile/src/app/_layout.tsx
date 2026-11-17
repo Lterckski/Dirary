@@ -58,7 +58,7 @@ export default function RootLayout() {
           headerRight: () => <CoachButton />,
           sceneStyle: { backgroundColor: colors.night },
         }}>
-        <Tabs.Screen name="index" options={{ title: 'Today', tabBarIcon: ({ color }) => <TodayIcon color={color} /> }} />
+        <Tabs.Screen name="index" options={{ title: 'Today', headerShown: false, tabBarIcon: ({ color }) => <TodayIcon color={color} /> }} />
         <Tabs.Screen name="tasks" options={{ title: 'Tasks', tabBarIcon: ({ color }) => <TasksIcon color={color} /> }} />
         <Tabs.Screen name="money" options={{ title: 'Money', headerShown: false, tabBarIcon: ({ color }) => <MoneyIcon color={color} /> }} />
         <Tabs.Screen name="health" options={{ title: 'Health', tabBarIcon: ({ color }) => <HealthIcon color={color} /> }} />

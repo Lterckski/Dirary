@@ -1,3 +1,4 @@
+import { useLocalSearchParams } from 'expo-router';
 import { useEffect, useMemo, useRef, useState, type ComponentRef } from 'react';
 import * as Haptics from 'expo-haptics';
 import Animated, { ReduceMotion, ZoomIn } from 'react-native-reanimated';
@@ -142,6 +143,9 @@ export default function MoneyScreen() {
 
   // The floating + button opens the add form.
   useAddRequest('money', () => setSheet({ kind: 'tx', tx: null }));
+  // The Day widget's "Expense" button opens the app with ?add=1.
+  const params = useLocalSearchParams<{ add?: string }>();
+  useEffect(() => { if (params.add) setSheet({ kind: 'tx', tx: null }); }, [params.add]);
   const inbox = useMemo(() => needsReview(transactions), [transactions]);
   const pairs = useMemo(() => findTransferPairs(inbox), [inbox]);
   const paired = new Set(pairs.flatMap((p) => [p.out.id, p.into.id]));
