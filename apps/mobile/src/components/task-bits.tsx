@@ -4,10 +4,8 @@ import { Path, Svg } from 'react-native-svg';
 import { colors, radius, space, type ColorToken } from '@dirary/ui';
 import { PRIORITY_LABEL, RECURRENCE_LABEL, asRecurrence, dayLabel, fromNow, timeLabel, type List, type Task } from '@dirary/shared';
 
-import Animated, { Easing, ReduceMotion, ZoomIn } from 'react-native-reanimated';
-
-/** The one easing curve used for motion across the app. */
-export const EASE_OUT = Easing.bezier(0.23, 1, 0.32, 1);
+import Animated, { ReduceMotion, ZoomIn } from 'react-native-reanimated';
+import { EASE_OUT } from '@/lib/motion';
 import { Text } from '@/components/ui';
 
 const URGENCY_COLOR: Record<number, string> = { 0: colors.inkBlue, 1: colors.inkBlue, 2: colors.amber, 3: colors.red };

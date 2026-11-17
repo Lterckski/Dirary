@@ -14,7 +14,7 @@ const PALETTE = [colors.inkBlue, colors.tongue, colors.amber, colors.text, color
 
 interface Bit { x: number; y: number; vx: number; vy: number; spin: number; angle: number; flip: number; w: number; h: number; round: boolean; color: string; delay: number }
 
-function makeBits(x: number, y: number, width: number): Bit[] {
+function makeBits(x: number, y: number, width: number, amount: number): Bit[] {
   const bits: Bit[] = [];
   const burst = (ox: number, count: number, from: number, to: number, slow: number, fast: number, delay: number) => {
     for (let i = 0; i < count; i++) {
@@ -30,9 +30,9 @@ function makeBits(x: number, y: number, width: number): Bit[] {
     }
   };
   // One big burst up and out of the progress bar, then two smaller pops from its ends.
-  burst(x, 70, -165, -15, 450, 1150, 0);
-  burst(x - width / 2, 25, -120, -60, 400, 900, 140);
-  burst(x + width / 2, 25, -120, -60, 400, 900, 140);
+  burst(x, Math.round(70 * amount), -165, -15, 450, 1150 * Math.min(1, 0.6 + amount * 0.4), 0);
+  burst(x - width / 2, Math.round(25 * amount), -120, -60, 400, 900, 140);
+  burst(x + width / 2, Math.round(25 * amount), -120, -60, 400, 900, 140);
   return bits;
 }
 
@@ -57,10 +57,11 @@ function Piece({ bit, clock }: { bit: Bit; clock: SharedValue<number> }) {
 }
 
 /** Renders a burst centred on `origin` (in this view's coordinates) each time `shot` changes to a new number above 0. */
-export function Confetti({ shot, origin }: { shot: number; origin: { x: number; y: number; width: number } | null }) {
+/** `amount` scales the number of pieces: 1 for the big moments, less for smaller wins. */
+export function Confetti({ shot, origin, amount = 1 }: { shot: number; origin: { x: number; y: number; width: number } | null; amount?: number }) {
   const reduced = useReducedMotion();
   const clock = useSharedValue(0);
-  const bits = useMemo(() => (shot > 0 && origin && !reduced ? makeBits(origin.x, origin.y, origin.width) : []), [shot, origin, reduced]);
+  const bits = useMemo(() => (shot > 0 && origin && !reduced ? makeBits(origin.x, origin.y, origin.width, amount) : []), [shot, origin, reduced, amount]);
   useEffect(() => {
     if (bits.length === 0) return;
     clock.value = 0;

@@ -10,7 +10,8 @@ const LIFE_MS = 2400;
 const GRAVITY = 1500; // px/s²
 const DRAG = 1.9; // per second
 
-export function confettiFrom(origin: Element | null): void {
+/** `amount` scales the number of pieces: 1 for the big moments, less for smaller wins. */
+export function confettiFrom(origin: Element | null, { amount = 1 }: { amount?: number } = {}): void {
   if (!origin || window.matchMedia('(prefers-reduced-motion: reduce)').matches) return;
   const css = getComputedStyle(document.documentElement);
   const colors = TOKENS.map((t) => css.getPropertyValue(t).trim()).filter(Boolean);
@@ -42,9 +43,9 @@ export function confettiFrom(origin: Element | null): void {
   };
   const cx = box.left + box.width / 2;
   const cy = box.top + box.height / 2;
-  burst(cx, cy, 130, [-165, -15], [500, 1250], 0);
-  burst(box.left, cy, 40, [-120, -60], [450, 950], 140);
-  burst(box.right, cy, 40, [-120, -60], [450, 950], 140);
+  burst(cx, cy, Math.round(130 * amount), [-165, -15], [500, 1250 * Math.min(1, 0.6 + amount * 0.4)], 0);
+  burst(box.left, cy, Math.round(40 * amount), [-120, -60], [450, 950], 140);
+  burst(box.right, cy, Math.round(40 * amount), [-120, -60], [450, 950], 140);
 
   const frame = (now: number) => {
     ctx.clearRect(0, 0, window.innerWidth, window.innerHeight);

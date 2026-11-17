@@ -1,4 +1,6 @@
 import { useEffect, useMemo, useRef, useState, type ComponentRef } from 'react';
+import * as Haptics from 'expo-haptics';
+import Animated, { ReduceMotion, ZoomIn } from 'react-native-reanimated';
 import { AppState, Pressable, ScrollView, Share, TextInput, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Path, Svg } from 'react-native-svg';
@@ -8,7 +10,10 @@ import {
   type Institution, type MonthRecap, type Stash, type Transaction,
 } from '@dirary/shared';
 
+import { Confetti } from '@/components/confetti';
 import { Mascot } from '@/components/mascot';
+import { Bar, ChangeTag, useChange } from '@/components/motion-bits';
+import { CHECKED_MS, EASE_OUT, ENTER, LEAVE, MOVE } from '@/lib/motion';
 import { AccountsEditor, BudgetEditor, ResetEditor, StashEditor, StashMoveEditor, CategoriesEditor, FixedEditor, Segmented, TransactionEditor, TransferEditor, TxRow } from '@/components/money-editor';
 import { Chip, Group } from '@/components/task-bits';
 import { Button, Card, TAB_BAR_CLEARANCE, Text, styles } from '@/components/ui';
@@ -44,6 +49,71 @@ export default function MoneyScreen() {
   const budgetLine = budgetCoach(summary, now.getDate(), daysInMonth);
   const coach = budgetLine.mood === 'worried' && safe.safeToday >= 0 ? budgetLine : spendCoach(safe, fixedSummary, formatPeso);
   const stash = useMemo(() => stashSummary(stashes, accounts, transactions), [stashes, accounts, transactions]);
+
+  // A floating "−₱130" beside the big numbers whenever they change after the screen has loaded.
+  const safeChange = useChange(loading ? null : safe.ready ? safe.safeToday : safe.spentToday);
+  const walletChange = useChange(loading ? null : stash.stashed > 0 ? stash.spendable : stash.total);
+
+  // New transactions slide in (the ones there on open don't); confirmed "To review" items fade and the rest glide up.
+  const known = useRef<Set<string> | null>(null);
+  const fresh = useRef(new Set<string>());
+  const markFresh = (id: string) => { fresh.current.add(id); setTimeout(() => fresh.current.delete(id), 800); };
+  if (!loading) {
+    if (!known.current) known.current = new Set(transactions.map((t) => t.id));
+    for (const t of transactions) if (!known.current.has(t.id)) { known.current.add(t.id); markFresh(t.id); }
+  }
+  const [leaving, setLeaving] = useState<Set<string>>(new Set());
+  function confirm(t: Transaction) {
+    setLeaving((cur) => new Set(cur).add(t.id));
+    markFresh(t.id);
+    updateTransaction(t, { status: 'confirmed' });
+  }
+
+  // Ticking a fixed expense: it shows as paid for a moment, then the payment is logged and the row glides down.
+  const [paying, setPaying] = useState<Set<string>>(new Set());
+  const payTimers = useRef(new Map<string, ReturnType<typeof setTimeout>>());
+  function tickFixed(item: (typeof fixedSummary.items)[number]) {
+    if (item.payment) return removeTransaction(item.payment);
+    const id = item.expense.id;
+    const timer = payTimers.current.get(id);
+    if (timer !== undefined) {
+      clearTimeout(timer);
+      payTimers.current.delete(id);
+      return setPaying((cur) => { const next = new Set(cur); next.delete(id); return next; });
+    }
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => {});
+    setPaying((cur) => new Set(cur).add(id));
+    payTimers.current.set(id, setTimeout(() => { payTimers.current.delete(id); payFixed(item.expense, accounts[0]?.id ?? null); }, CHECKED_MS));
+  }
+  // Saving is asynchronous, so rows keep their in-between look until the saved change reaches the list.
+  useEffect(() => {
+    setLeaving((cur) => (cur.size === 0 ? cur : new Set([...cur].filter((id) => transactions.some((t) => t.id === id && t.status === 'needs_review')))));
+    setPaying((cur) => (cur.size === 0 ? cur : new Set([...cur].filter((id) => payTimers.current.has(id)))));
+  }, [transactions]);
+
+  // Small celebrations: every fixed expense paid for the month, or a stash reaching its goal.
+  const screenRef = useRef<ComponentRef<typeof View>>(null);
+  const fixedRef = useRef<ComponentRef<typeof View>>(null);
+  const stashRef = useRef<ComponentRef<typeof View>>(null);
+  const [party, setParty] = useState<{ shot: number; origin: { x: number; y: number; width: number } | null; amount: number }>({ shot: 0, origin: null, amount: 1 });
+  const celebrate = (from: ComponentRef<typeof View> | null, amount: number) => {
+    Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
+    screenRef.current?.measureInWindow((sx, sy) => {
+      from?.measureInWindow((x, y, w, h) => setParty((p) => ({ shot: p.shot + 1, origin: { x: x - sx + w / 2, y: y - sy + h / 2, width: w }, amount })));
+    });
+  };
+  const allPaid = fixedSummary.items.length > 0 && fixedSummary.paid === fixedSummary.total;
+  const reached = stash.stashes.filter((s) => stashProgress(s) === 100).map((s) => s.id).join(',');
+  const seen = useRef<{ allPaid: boolean; reached: Set<string> } | null>(null);
+  useEffect(() => {
+    if (loading) return;
+    const now = new Set(reached ? reached.split(',') : []);
+    const was = seen.current;
+    seen.current = { allPaid, reached: now };
+    if (!was) return;
+    if (allPaid && !was.allPaid) celebrate(fixedRef.current, 0.5);
+    else if ([...now].some((id) => !was.reached.has(id))) celebrate(stashRef.current, 0.6);
+  }, [loading, allPaid, reached]); // eslint-disable-line react-hooks/exhaustive-deps
   const safePct = safe.dailyLimit === 0 ? (safe.spentToday > 0 ? 100 : 0) : Math.min(100, Math.round((safe.spentToday / safe.dailyLimit) * 100));
   const shortcuts = categories.filter((c) => c.kind === 'expense').slice(0, 4);
   const over = safe.ready && safe.safeToday < 0;
@@ -87,7 +157,9 @@ export default function MoneyScreen() {
     else days.push({ date, rows: [t] });
   }
   const row = (t: Transaction, action?: { label: string; onPress: () => void }) => (
-    <TxRow key={t.id} tx={t} account={t.account_id ? accountById.get(t.account_id) : undefined} category={t.category_id ? categoryById.get(t.category_id) : undefined} onOpen={() => setSheet({ kind: 'tx', tx: t })} action={action} />
+    <Animated.View key={t.id} layout={MOVE} entering={fresh.current.has(t.id) ? ENTER : undefined} exiting={leaving.has(t.id) ? LEAVE : undefined}>
+      <TxRow tx={t} account={t.account_id ? accountById.get(t.account_id) : undefined} category={t.category_id ? categoryById.get(t.category_id) : undefined} onOpen={() => setSheet({ kind: 'tx', tx: t })} action={action} />
+    </Animated.View>
   );
 
   if (loading) return <View style={[styles.screen, { padding: space[5], paddingTop: insets.top + space[5] }]}><Text muted>Loading your money…</Text></View>;
@@ -105,7 +177,7 @@ export default function MoneyScreen() {
   }
 
   return (
-    <View style={styles.screen}>
+    <View ref={screenRef} style={styles.screen}>
       <ScrollView ref={scroller} contentContainerStyle={{ paddingBottom: TAB_BAR_CLEARANCE }} keyboardShouldPersistTaps="handled">
         <View style={{ backgroundColor: colors.inkBlue, borderBottomLeftRadius: 36, borderBottomRightRadius: 36, paddingTop: insets.top + space[4], paddingHorizontal: space[5], paddingBottom: 72 }}>
           <Text variant="small" weight="bold" style={{ color: colors.onInkBlue, letterSpacing: 1.3 }}>{now.toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' }).toUpperCase()}</Text>
@@ -127,17 +199,21 @@ export default function MoneyScreen() {
           </View>
           {safe.ready ? (
             <>
-              <Text variant="hero" style={[NUM, over && { color: colors.red }]} adjustsFontSizeToFit numberOfLines={1}>{formatPeso(safe.safeToday)}</Text>
-              <Text variant="label" muted style={NUM}>of {formatPeso(safe.dailyLimit)} daily limit</Text>
-              <View accessibilityRole="progressbar" accessibilityLabel="Today's limit used" accessibilityValue={{ min: 0, max: 100, now: safePct }} style={{ height: 12, borderRadius: radius.pill, backgroundColor: colors.line, overflow: 'hidden' }}>
-                <View style={{ width: `${safePct}%`, height: 12, borderRadius: radius.pill, backgroundColor: over ? colors.red : colors.inkBlue }} />
+              <View>
+                <Text variant="hero" style={[NUM, over && { color: colors.red }]} adjustsFontSizeToFit numberOfLines={1}>{formatPeso(safe.safeToday)}</Text>
+                <View pointerEvents="none" style={{ position: 'absolute', right: 0, top: 10 }}><ChangeTag change={safeChange} /></View>
               </View>
+              <Text variant="label" muted style={NUM}>of {formatPeso(safe.dailyLimit)} daily limit</Text>
+              <Bar pct={safePct} height={12} color={over ? colors.red : colors.inkBlue} label="Today's limit used" />
               <Text weight="bold" style={NUM}>Today spent: {formatPeso(safe.spentToday)}</Text>
               <Text variant="label" muted style={NUM}>{safe.daysLeft} day{safe.daysLeft === 1 ? '' : 's'} left · {formatPeso(safe.leftThisMonth)} for the month</Text>
             </>
           ) : (
             <>
-              <Text variant="hero" style={NUM} adjustsFontSizeToFit numberOfLines={1}>{formatPeso(safe.spentToday)}</Text>
+              <View>
+                <Text variant="hero" style={NUM} adjustsFontSizeToFit numberOfLines={1}>{formatPeso(safe.spentToday)}</Text>
+                <View pointerEvents="none" style={{ position: 'absolute', right: 0, top: 10 }}><ChangeTag change={safeChange} /></View>
+              </View>
               <Text variant="label" muted>spent today</Text>
               <View style={styles.row}><Button primary label="Set a monthly budget" onPress={() => setSheet({ kind: 'budget' })} /></View>
             </>
@@ -169,7 +245,10 @@ export default function MoneyScreen() {
               <Mascot mood="happy" size={132} />
             </View>
             <Text variant="small" weight="bold" style={LABEL}>{stash.stashed > 0 ? 'SPENDABLE' : 'BALANCE'}</Text>
-            <Text variant="title" style={NUM} adjustsFontSizeToFit numberOfLines={1}>{formatPeso(stash.stashed > 0 ? stash.spendable : stash.total)}</Text>
+            <View>
+              <Text variant="title" style={NUM} adjustsFontSizeToFit numberOfLines={1}>{formatPeso(stash.stashed > 0 ? stash.spendable : stash.total)}</Text>
+              <View pointerEvents="none" style={{ position: 'absolute', right: 0, top: 4 }}><ChangeTag change={walletChange} /></View>
+            </View>
             {stash.stashed > 0 && <Text variant="label" muted style={NUM}>{formatPeso(stash.stashed)} in stashes · {formatPeso(stash.total)} in total</Text>}
             {shown && (
               <View style={[styles.row, { flexWrap: 'wrap', gap: space[1] }]} accessibilityLiveRegion="polite">
@@ -189,6 +268,7 @@ export default function MoneyScreen() {
           </View>
         </View>
 
+        <View ref={stashRef} collapsable={false}>
         <Card>
           <View style={[styles.row, { justifyContent: 'space-between' }]}>
             <Text variant="small" weight="bold" style={LABEL}>STASHES</Text>
@@ -208,9 +288,7 @@ export default function MoneyScreen() {
                   <Text weight="bold" style={NUM}>{formatPeso(s.amount_centavos)}</Text>
                 </Pressable>
                 {pct !== null && (
-                  <View accessibilityRole="progressbar" accessibilityLabel={`${s.name} goal`} accessibilityValue={{ min: 0, max: 100, now: pct }} style={{ height: 8, borderRadius: radius.pill, backgroundColor: colors.line, overflow: 'hidden' }}>
-                    <View style={{ width: `${pct}%`, height: 8, borderRadius: radius.pill, backgroundColor: colors.inkBlue }} />
-                  </View>
+                  <Bar pct={pct} color={colors.inkBlue} label={`${s.name} goal`} />
                 )}
                 <View style={[styles.row, { gap: space[2] }]}>
                   <Chip label="Put in" onPress={() => setSheet({ kind: 'stashMove', stash: s, mode: 'in' })} />
@@ -225,6 +303,7 @@ export default function MoneyScreen() {
             </Text>
           )}
         </Card>
+        </View>
 
         {shortcuts.length > 0 && (
           <View style={{ flexDirection: 'row', gap: 10 }}>
@@ -253,6 +332,7 @@ export default function MoneyScreen() {
           </Text>
         </View>
 
+        <View ref={fixedRef} collapsable={false}>
         <Card>
           <View style={[styles.row, { justifyContent: 'space-between' }]}>
             <Text variant="small" weight="bold" style={LABEL}>FIXED THIS MONTH</Text>
@@ -263,17 +343,22 @@ export default function MoneyScreen() {
           ) : (
             <>
               <Text variant="label" muted style={NUM}>{formatPeso(fixedSummary.paid)} of {formatPeso(fixedSummary.total)} paid</Text>
-              {fixedSummary.items.map((i) => {
+              {fixedSummary.items.map((item) => ({ ...item, paid: item.paid || paying.has(item.expense.id) })).map((i) => {
                 const edge = i.paid || i.dueIn > 3 ? colors.inkBlue : i.dueIn < 0 ? colors.red : colors.amber;
                 return (
-                  <View key={i.expense.id} style={{ flexDirection: 'row', alignItems: 'center', marginLeft: -space[3] }}>
+                  // Rows glide to their new place when a paid one moves to the bottom.
+                  <Animated.View key={i.expense.id} layout={MOVE} style={{ flexDirection: 'row', alignItems: 'center', marginLeft: -space[3] }}>
                     <Pressable
                       accessibilityRole="checkbox" accessibilityState={{ checked: i.paid }}
                       accessibilityLabel={`${i.expense.name}, ${formatPeso(i.expense.amount_centavos)}, mark ${i.paid ? 'not paid' : 'paid'}`}
-                      onPress={() => (i.payment ? removeTransaction(i.payment) : payFixed(i.expense, accounts[0]?.id ?? null))}
+                      onPress={() => tickFixed(i)}
                       style={{ width: 48, height: 48, alignItems: 'center', justifyContent: 'center' }}>
                       <View style={{ width: 26, height: 26, borderRadius: radius.sm, borderWidth: 2.5, borderColor: edge, backgroundColor: i.paid ? colors.inkBlue : 'transparent', alignItems: 'center', justifyContent: 'center' }}>
-                        {i.paid && <Svg width={16} height={16} viewBox="0 0 16 16"><Path d="M3 8.5 6.5 12 13 4.5" fill="none" stroke={colors.onInkBlue} strokeWidth={2.6} strokeLinecap="round" strokeLinejoin="round" /></Svg>}
+                        {i.paid && (
+                          <Animated.View entering={paying.has(i.expense.id) ? ZoomIn.duration(180).easing(EASE_OUT).reduceMotion(ReduceMotion.System) : undefined}>
+                            <Svg width={16} height={16} viewBox="0 0 16 16"><Path d="M3 8.5 6.5 12 13 4.5" fill="none" stroke={colors.onInkBlue} strokeWidth={2.6} strokeLinecap="round" strokeLinejoin="round" /></Svg>
+                          </Animated.View>
+                        )}
                       </View>
                     </Pressable>
                     <View style={{ flex: 1, gap: 2 }}>
@@ -281,12 +366,13 @@ export default function MoneyScreen() {
                       {!i.paid && <Text variant="label" style={{ color: i.dueIn < 0 ? colors.red : i.dueIn <= 3 ? colors.amber : colors.muted }}>{dueLabel(i)}</Text>}
                     </View>
                     <Text weight="bold" style={[NUM, i.paid && { color: colors.faint }]}>{formatPeso(i.expense.amount_centavos)}</Text>
-                  </View>
+                  </Animated.View>
                 );
               })}
             </>
           )}
         </Card>
+        </View>
 
         <CaptureCard />
 
@@ -305,7 +391,7 @@ export default function MoneyScreen() {
                 </Pressable>
               </View>
             ))}
-            {inbox.filter((t) => !paired.has(t.id)).map((t) => row(t, { label: 'Confirm', onPress: () => (t.account_id ? updateTransaction(t, { status: 'confirmed' }) : setSheet({ kind: 'tx', tx: t })) }))}
+            {inbox.filter((t) => !paired.has(t.id)).map((t) => row(t, { label: 'Confirm', onPress: () => (t.account_id ? confirm(t) : setSheet({ kind: 'tx', tx: t })) }))}
           </View>
         )}
 
@@ -327,9 +413,7 @@ export default function MoneyScreen() {
                 </View>
                 {r.limit !== null && (
                   <>
-                    <View accessibilityRole="progressbar" accessibilityLabel={`${r.category.name} budget used`} accessibilityValue={{ min: 0, max: 100, now: pct }} style={{ height: 8, borderRadius: radius.pill, backgroundColor: colors.line, overflow: 'hidden' }}>
-                      <View style={{ width: `${pct}%`, height: 8, borderRadius: radius.pill, backgroundColor: over ? colors.red : colors.inkBlue }} />
-                    </View>
+                    <Bar pct={pct} color={over ? colors.red : colors.inkBlue} label={`${r.category.name} budget used`} />
                     <Text variant="label" style={{ color: over ? colors.red : colors.muted }}>{over ? `Over by ${formatPeso(-(r.left as number))}` : `${formatPeso(r.left as number)} left`}</Text>
                   </>
                 )}
@@ -379,6 +463,7 @@ export default function MoneyScreen() {
       {sheet?.kind === 'stash' && <StashEditor stash={sheet.stash} accounts={accounts} count={stashes.length} startAccount={shown?.id} onClose={() => setSheet(null)} />}
       {sheet?.kind === 'stashMove' && <StashMoveEditor stash={sheet.stash} mode={sheet.mode} free={stash.byAccount.get(sheet.stash.account_id)?.free ?? 0} accountName={accountById.get(sheet.stash.account_id)?.name ?? 'the account'} onClose={() => setSheet(null)} />}
       {sheet?.kind === 'categories' && <CategoriesEditor categories={categories} onClose={() => setSheet(null)} />}
+      <Confetti shot={party.shot} origin={party.origin} amount={party.amount} />
     </View>
   );
 }

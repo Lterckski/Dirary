@@ -2,7 +2,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as Haptics from 'expo-haptics';
 import { useLocalSearchParams } from 'expo-router';
 import { useEffect, useMemo, useRef, useState, type ComponentRef } from 'react';
-import Animated, { FadeInDown, FadeOut, LinearTransition, ReduceMotion, useAnimatedStyle, useSharedValue, withSequence, withSpring, withTiming } from 'react-native-reanimated';
+import Animated, { ReduceMotion, useAnimatedStyle, useSharedValue, withSequence, withSpring, withTiming } from 'react-native-reanimated';
 import { Pressable, ScrollView, TextInput, View } from 'react-native';
 import { colors, radius, space } from '@dirary/ui';
 import {
@@ -12,7 +12,8 @@ import {
 
 import { Mascot } from '@/components/mascot';
 import { Confetti } from '@/components/confetti';
-import { Chip, EASE_OUT, Group, Segmented, TaskRow } from '@/components/task-bits';
+import { Chip, Group, Segmented, TaskRow } from '@/components/task-bits';
+import { CHECKED_MS, EASE_OUT, ENTER, LEAVE, MOVE } from '@/lib/motion';
 import { ListsEditor, TaskEditor } from '@/components/task-editor';
 import { Button, Card, Text, styles } from '@/components/ui';
 import { requestReminderPermission } from '@/lib/reminders';
@@ -23,11 +24,6 @@ type View_ = 'today' | 'upcoming' | 'inbox' | 'done' | string; // any other stri
 const FIXED_VIEWS = ['today', 'upcoming', 'inbox', 'done'];
 const toLocal = (iso: string) => localDate(new Date(iso));
 
-/** How long a ticked task stays visible, checked, before it folds away. */
-const CHECKED_MS = 340;
-const ENTER = FadeInDown.duration(200).easing(EASE_OUT).withInitialValues({ transform: [{ translateY: -6 }] }).reduceMotion(ReduceMotion.System);
-const LEAVE = FadeOut.duration(160).reduceMotion(ReduceMotion.System);
-const MOVE = LinearTransition.duration(220).easing(EASE_OUT).reduceMotion(ReduceMotion.System);
 
 export default function TasksScreen() {
   const { tasks, lists, loading, message } = useTasksStore();

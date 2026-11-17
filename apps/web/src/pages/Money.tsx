@@ -1,9 +1,10 @@
-import { useEffect, useMemo, useState, type FormEvent, type ReactNode } from 'react';
+import { useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties, type FormEvent, type ReactNode, type RefObject } from 'react';
 import {
   INSTITUTIONS, INSTITUTION_LABEL, LIST_COLORS, TransactionDraft, accountBalance, budgetCoach, dayLabel, endOfDayBalances, moveStash, stashProgress, stashSummary, findTransferPairs, formatPeso, guessMapping,
   dueLabel, fixedThisMonth, formatPesoShort, monthName, monthlyRecap, recapLine, localDate, monthSummary, needsReview, parseAmount, parseCsv, parseMoneyQuickAdd, recentTransactions, rowsToTransactions, safeToSpend, spendCoach,
   type Account, type Category, type CsvMapping, type FixedExpense, type Stash, type Institution, type ListColor, type Transaction,
 } from '@dirary/shared';
+import { confettiFrom } from '../confetti';
 import { Mascot } from '../Mascot';
 import { useMoney, type MoneyStore } from '../money/useMoney';
 import { Modal, openPicker } from '../ui';
@@ -35,6 +36,56 @@ export function Money() {
   const budgetLine = budgetCoach(summary, now.getDate(), daysInMonth);
   const coach = budgetLine.mood === 'worried' && safe.safeToday >= 0 ? budgetLine : spendCoach(safe, fixedSummary, formatPeso);
   const stash = useMemo(() => stashSummary(store.stashes, accounts, transactions), [store.stashes, accounts, transactions]);
+
+  // A floating "−₱130" beside the big numbers whenever they change after the page has loaded.
+  const safeChange = useChange(loading ? null : safe.ready ? safe.safeToday : safe.spentToday);
+  const walletChange = useChange(loading ? null : stash.stashed > 0 ? stash.spendable : stash.total);
+
+  // New transactions slide in; confirmed "To review" items fold away first.
+  const fresh = useFresh(transactions.map((t) => t.id), loading);
+  const [leaving, setLeaving] = useState<Set<string>>(new Set());
+  function confirm(t: Transaction) {
+    setLeaving((cur) => new Set(cur).add(t.id));
+    window.setTimeout(() => {
+      fresh.mark(t.id);
+      store.updateTransaction(t.id, { status: 'confirmed' });
+      setLeaving((cur) => { const next = new Set(cur); next.delete(t.id); return next; });
+    }, FOLD_MS);
+  }
+
+  // Ticking a fixed expense: it shows as paid for a moment, then the payment is logged and the row glides down.
+  const [paying, setPaying] = useState<Set<string>>(new Set());
+  const payTimers = useRef(new Map<string, number>());
+  function tickFixed(item: (typeof fixedSummary.items)[number]) {
+    if (item.payment) return store.removeTransaction(item.payment.id);
+    const id = item.expense.id;
+    const drop = () => setPaying((cur) => { const next = new Set(cur); next.delete(id); return next; });
+    const timer = payTimers.current.get(id);
+    if (timer !== undefined) { window.clearTimeout(timer); payTimers.current.delete(id); return drop(); }
+    setPaying((cur) => new Set(cur).add(id));
+    payTimers.current.set(id, window.setTimeout(() => {
+      payTimers.current.delete(id);
+      store.payFixed(item.expense, accounts[0]?.id ?? null);
+      drop();
+    }, CHECKED_MS));
+  }
+  const fixedList = useRef<HTMLUListElement>(null);
+  useFlip(fixedList, [fixedSummary]);
+
+  // Small celebrations: every fixed expense paid for the month, or a stash reaching its goal.
+  const fixedCard = useRef<HTMLElement>(null);
+  const allPaid = fixedSummary.items.length > 0 && fixedSummary.paid === fixedSummary.total;
+  const reached = stash.stashes.filter((s) => stashProgress(s) === 100).map((s) => s.id).join(',');
+  const seen = useRef<{ allPaid: boolean; reached: Set<string> } | null>(null);
+  useEffect(() => {
+    if (loading) return;
+    const now = new Set(reached ? reached.split(',') : []);
+    const was = seen.current;
+    seen.current = { allPaid, reached: now };
+    if (!was) return;
+    if (allPaid && !was.allPaid) confettiFrom(fixedCard.current, { amount: 0.5 });
+    for (const id of now) if (!was.reached.has(id)) confettiFrom(document.querySelector(`[data-stash="${id}"] .stash-bar`), { amount: 0.6 });
+  }, [loading, allPaid, reached]);
   const safePct = safe.dailyLimit === 0 ? (safe.spentToday > 0 ? 100 : 0) : Math.min(100, Math.round((safe.spentToday / safe.dailyLimit) * 100));
   const shortcuts = categories.filter((c) => c.kind === 'expense').slice(0, 4);
   const recap = useMemo(() => monthlyRecap(transactions, today, toLocal), [transactions, today]);
@@ -66,7 +117,8 @@ export function Money() {
   }
 
   const row = (t: Transaction, actions?: ReactNode) => (
-    <TxRow key={t.id} tx={t} account={t.account_id ? accountById.get(t.account_id) : undefined} category={t.category_id ? categoryById.get(t.category_id) : undefined} onOpen={() => setDialog({ kind: 'tx', tx: t })} actions={actions} />
+    <TxRow key={t.id} tx={t} account={t.account_id ? accountById.get(t.account_id) : undefined} category={t.category_id ? categoryById.get(t.category_id) : undefined}
+      leaving={leaving.has(t.id)} fresh={fresh.has(t.id)} onOpen={() => setDialog({ kind: 'tx', tx: t })} actions={actions} />
   );
 
   const firstUse = !loading && accounts.length === 0 && categories.length === 0;
@@ -105,7 +157,7 @@ export function Money() {
             </div>
             {safe.ready ? (
               <>
-                <p className={safe.safeToday < 0 ? 'display safe-amount late' : 'display safe-amount'}>{formatPeso(safe.safeToday)}</p>
+                <p className={safe.safeToday < 0 ? 'display safe-amount late' : 'display safe-amount'}><Figure value={safe.safeToday} change={safeChange} /></p>
                 <p className="muted">of {formatPeso(safe.dailyLimit)} daily limit</p>
                 <div className={safe.safeToday < 0 ? 'bar over' : 'bar'} role="progressbar" aria-valuemin={0} aria-valuemax={100} aria-valuenow={safePct} aria-label="Today's limit used">
                   <div style={{ width: `${safePct}%` }} />
@@ -114,7 +166,7 @@ export function Money() {
               </>
             ) : (
               <>
-                <p className="display safe-amount">{formatPeso(safe.spentToday)}</p>
+                <p className="display safe-amount"><Figure value={safe.spentToday} change={safeChange} /></p>
                 <p className="muted">spent today</p>
                 <button type="button" className="btn primary" style={{ alignSelf: 'flex-start' }} onClick={() => setDialog({ kind: 'budget' })}>Set a monthly budget</button>
               </>
@@ -141,7 +193,7 @@ export function Money() {
             <div className="wallet-front">
               <span className="wallet-ink" aria-hidden="true"><Mascot mood="happy" size={132} /></span>
               <h2 id="wallet-title" className="card-label">{stash.stashed > 0 ? 'Spendable' : 'Balance'}</h2>
-              <p className="display wallet-total">{formatPeso(stash.stashed > 0 ? stash.spendable : stash.total)}</p>
+              <p className="display wallet-total"><Figure value={stash.stashed > 0 ? stash.spendable : stash.total} change={walletChange} /></p>
               {stash.stashed > 0 && <p className="wallet-sub">{formatPeso(stash.stashed)} in stashes · {formatPeso(stash.total)} in total</p>}
               {shown && (
                 <p className="wallet-filter" role="status">
@@ -176,7 +228,7 @@ export function Money() {
                 {stash.stashes.map((s) => {
                   const pct = stashProgress(s);
                   return (
-                    <li key={s.id} className="stash">
+                    <li key={s.id} className="stash" data-stash={s.id}>
                       <button type="button" className="stash-main" onClick={() => setDialog({ kind: 'stash', stash: s })} aria-label={`Edit ${s.name}`}>
                         <span className="task-title">{s.name}</span>
                         <span className="task-meta">{accountById.get(s.account_id)?.name}{s.goal_centavos ? ` · goal ${formatPeso(s.goal_centavos)}` : ''}</span>
@@ -218,7 +270,7 @@ export function Money() {
 
           </div>
           <div className="money-col">
-          <section className="card fixed-card" aria-labelledby="fixed-title">
+          <section ref={fixedCard} className="card fixed-card" aria-labelledby="fixed-title">
             <div className="row" style={{ justifyContent: 'space-between' }}>
               <h2 id="fixed-title" className="card-label">Fixed this month</h2>
               <span className="row" style={{ gap: 8 }}>
@@ -229,13 +281,13 @@ export function Money() {
             {fixedSummary.items.length === 0 ? (
               <p className="muted">Add what you pay every month, like rent, internet or a subscription. Dirary sets that money aside before working out what's safe to spend.</p>
             ) : (
-              <ul className="fixed-list">
-                {fixedSummary.items.map((i) => (
-                  <li key={i.expense.id} className={i.paid ? 'fixed done' : 'fixed'}>
+              <ul ref={fixedList} className="fixed-list">
+                {fixedSummary.items.map((item) => ({ ...item, paid: item.paid || paying.has(item.expense.id) })).map((i) => (
+                  <li key={i.expense.id} data-flip={i.expense.id} className={i.paid ? 'fixed done' : 'fixed'}>
                     <button
                       type="button" role="checkbox" aria-checked={i.paid} className={i.paid || i.dueIn > 3 ? 'check' : i.dueIn < 0 ? 'check p3' : 'check p2'}
                       aria-label={`${i.expense.name}, ${formatPeso(i.expense.amount_centavos)}, mark ${i.paid ? 'not paid' : 'paid'}`}
-                      onClick={() => (i.payment ? store.removeTransaction(i.payment.id) : store.payFixed(i.expense, accounts[0]?.id ?? null))}>
+                      onClick={() => tickFixed(i)}>
                       <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M3 8.5 6.5 12 13 4.5" pathLength={1} /></svg>
                     </button>
                     <span className="grow fixed-main">
@@ -264,7 +316,7 @@ export function Money() {
                   </li>
                 ))}
                 {inbox.filter((t) => !paired.has(t.id)).map((t) => row(t, (
-                  <button type="button" className="btn primary small" onClick={() => store.updateTransaction(t.id, { status: 'confirmed' })} aria-label={`Confirm ${t.merchant ?? 'transaction'} ${formatPeso(t.amount_centavos)}`}>Confirm</button>
+                  <button type="button" className="btn primary small" onClick={() => confirm(t)} disabled={leaving.has(t.id)} aria-label={`Confirm ${t.merchant ?? 'transaction'} ${formatPeso(t.amount_centavos)}`}>Confirm</button>
                 )))}
               </ul>
             </section>
@@ -356,12 +408,16 @@ export function Money() {
   );
 }
 
-function TxRow({ tx, account, category, onOpen, actions }: { tx: Transaction; account?: Account; category?: Category; onOpen: () => void; actions?: ReactNode }) {
+function TxRow({ tx, account, category, leaving, fresh, onOpen, actions }: {
+  tx: Transaction; account?: Account; category?: Category; leaving?: boolean; fresh?: boolean; onOpen: () => void; actions?: ReactNode;
+}) {
+  const ref = useRef<HTMLLIElement>(null);
+  useFold(ref, !!leaving);
   const transfer = tx.transfer_group_id !== null;
   const title = transfer ? 'Transfer' : tx.merchant ?? category?.name ?? (tx.direction === 'in' ? 'Money in' : 'Spending');
   const meta = [account?.name, transfer ? null : category?.name, timeOf(tx.occurred_at), tx.source === 'notification' ? 'Auto-logged' : tx.source === 'import' ? 'Imported' : null].filter(Boolean).join(' · ');
   return (
-    <li className="task tx">
+    <li ref={ref} className={fresh ? 'task tx fresh' : 'task tx'}>
       <button type="button" className="task-main" onClick={onOpen} aria-label={`Edit ${title}, ${formatPeso(tx.amount_centavos)}`}>
         <span className="task-title">{title}</span>
         <span className="task-meta">{meta}</span>
@@ -393,7 +449,7 @@ function QuickAdd({ store, onMore }: { store: MoneyStore; onMore: (direction: Di
   }
   return (
     <form className="quick" onSubmit={submit}>
-      <div className="segmented quick-mode" role="group" aria-label="Money out or in">
+      <div className="segmented quick-mode slide-switch" role="group" aria-label="Money out or in" style={{ '--n': 2, '--i': incoming ? 1 : 0 } as CSSProperties}>
         <button type="button" aria-pressed={!incoming} onClick={() => pick('out')}>Spent</button>
         <button type="button" aria-pressed={incoming} onClick={() => pick('in')}>Received</button>
       </div>
@@ -447,7 +503,7 @@ function TxDialog({ tx, categoryId: startCategory, direction: startDirection, ac
       <form className="form" onSubmit={submit}>
         {isTransfer && <p className="note muted">This is one half of a transfer between your accounts. It doesn't count as spending or income.</p>}
         {!isTransfer && (
-          <div className="segmented kind-switch" role="group" aria-label="What kind of transaction">
+          <div className="segmented kind-switch slide-switch" role="group" aria-label="What kind of transaction" style={{ '--n': !tx && onTransfer ? 3 : 2, '--i': direction === 'in' ? 1 : 0 } as CSSProperties}>
             <button type="button" aria-pressed={direction === 'out'} onClick={() => setDirection('out')}>Spent</button>
             <button type="button" aria-pressed={direction === 'in'} onClick={() => setDirection('in')}>Received</button>
             {!tx && onTransfer && <button type="button" aria-pressed={false} onClick={onTransfer}>Transfer</button>}
@@ -962,4 +1018,84 @@ function StashMoveDialog({ stash, mode, free, accountName, store, onClose }: { s
       </form>
     </Modal>
   );
+}
+
+/** How long a ticked item stays visible before it moves; how long a row takes to fold shut. */
+const CHECKED_MS = 340;
+const FOLD_MS = 220;
+const EASE_OUT = 'cubic-bezier(0.23, 1, 0.32, 1)';
+const reducedMotion = () => window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+/** The last change to a number, kept for about a second so it can float beside the number. Null on first load. */
+function useChange(value: number | null): { key: number; delta: number } | null {
+  const prev = useRef<number | null>(null);
+  const [change, setChange] = useState<{ key: number; delta: number } | null>(null);
+  useEffect(() => {
+    if (value === null) return;
+    const was = prev.current;
+    prev.current = value;
+    if (was === null || was === value) return;
+    const key = performance.now();
+    setChange({ key, delta: value - was });
+    window.setTimeout(() => setChange((c) => (c?.key === key ? null : c)), 1000);
+  }, [value]);
+  return change;
+}
+
+/** A big peso figure that tints for a moment and shows the change beside it, e.g. "−₱130", after it changes. */
+function Figure({ value, change }: { value: number; change: { key: number; delta: number } | null }) {
+  return (
+    <>
+      <span key={change?.key ?? 0} className={change ? 'figure bumped' : 'figure'}>{formatPeso(value)}</span>
+      {change && <span key={`d${change.key}`} className={change.delta < 0 ? 'delta out' : 'delta'} aria-hidden="true">{formatPeso(change.delta, { sign: true })}</span>}
+    </>
+  );
+}
+
+/** Ids that appeared after the first load, for about half a second, so their rows can slide in. */
+function useFresh(ids: string[], loading: boolean) {
+  const known = useRef<Set<string> | null>(null);
+  const [fresh, setFresh] = useState<Set<string>>(new Set());
+  const key = ids.join(',');
+  const mark = (id: string) => {
+    setFresh((cur) => new Set(cur).add(id));
+    window.setTimeout(() => setFresh((cur) => { const next = new Set(cur); next.delete(id); return next; }), 600);
+  };
+  useLayoutEffect(() => {
+    if (loading) return;
+    if (!known.current) { known.current = new Set(ids); return; }
+    for (const id of ids) if (!known.current.has(id)) { known.current.add(id); mark(id); }
+  }, [key, loading]); // eslint-disable-line react-hooks/exhaustive-deps
+  return { has: (id: string) => fresh.has(id), mark };
+}
+
+/** Folds a list row shut: pins its height so there is a number to shrink from, then lets the CSS take it to zero. */
+function useFold(ref: RefObject<HTMLElement | null>, folding: boolean) {
+  useLayoutEffect(() => {
+    const el = ref.current;
+    if (!el || !folding) return;
+    el.style.height = `${el.offsetHeight}px`;
+    void el.offsetHeight;
+    el.classList.add('folding');
+  }, [ref, folding]);
+}
+
+/** Rows that change place in a list glide to their new spot instead of jumping (marked with data-flip). */
+function useFlip(list: RefObject<HTMLElement | null>, deps: unknown[]) {
+  const tops = useRef(new Map<string, number>());
+  useLayoutEffect(() => {
+    const el = list.current;
+    if (!el) return;
+    const next = new Map<string, number>();
+    for (const child of Array.from(el.querySelectorAll<HTMLElement>('[data-flip]'))) {
+      const id = child.dataset.flip!;
+      const top = child.offsetTop;
+      next.set(id, top);
+      const was = tops.current.get(id);
+      if (was !== undefined && Math.abs(was - top) > 1 && !reducedMotion()) {
+        child.animate([{ transform: `translateY(${was - top}px)` }, { transform: 'none' }], { duration: 280, easing: EASE_OUT });
+      }
+    }
+    tops.current = next;
+  }, deps); // eslint-disable-line react-hooks/exhaustive-deps
 }

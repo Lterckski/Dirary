@@ -1,4 +1,6 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
+import Animated, { ReduceMotion, useAnimatedStyle, useSharedValue, withTiming } from 'react-native-reanimated';
+import { EASE_OUT } from '@/lib/motion';
 import { Pressable, TextInput, View } from 'react-native';
 import { colors, space } from '@dirary/ui';
 import {
@@ -21,13 +23,26 @@ const money = { ...styles.input, fontVariant: ['tabular-nums' as const] };
 
 /** A row of equal-width options with one selected, like Spent / Received. */
 export function Segmented<T extends string>({ label, options, value, onChange }: { label: string; options: { value: T; label: string }[]; value: T | null; onChange: (value: T) => void }) {
+  // One highlight that slides to the chosen option instead of jumping.
+  const [width, setWidth] = useState(0);
+  const index = Math.max(0, options.findIndex((o) => o.value === value));
+  const step = (width - 8) / options.length; // inside the 1px border and 3px padding
+  const x = useSharedValue(index * step);
+  useEffect(() => {
+    x.value = withTiming(index * step, { duration: 150, easing: EASE_OUT, reduceMotion: ReduceMotion.System });
+  }, [index, step, x]);
+  const highlight = useAnimatedStyle(() => ({ transform: [{ translateX: x.value }] }));
   return (
-    <View accessibilityRole="radiogroup" accessibilityLabel={label} style={{ flexDirection: 'row', padding: 3, gap: 2, borderRadius: 999, borderWidth: 1, borderColor: colors.line, backgroundColor: colors.surface }}>
+    <View accessibilityRole="radiogroup" accessibilityLabel={label} onLayout={(e) => setWidth(e.nativeEvent.layout.width)}
+      style={{ flexDirection: 'row', padding: 3, borderRadius: 999, borderWidth: 1, borderColor: colors.line, backgroundColor: colors.surface }}>
+      {width > 0 && value !== null && options.some((o) => o.value === value) && (
+        <Animated.View pointerEvents="none" style={[{ position: 'absolute', top: 3, bottom: 3, left: 3, width: step, borderRadius: 999, backgroundColor: colors.inkBlue }, highlight]} />
+      )}
       {options.map((o) => {
         const on = o.value === value;
         return (
           <Pressable key={o.value} accessibilityRole="radio" accessibilityState={{ selected: on }} onPress={() => onChange(o.value)}
-            style={{ flex: 1, minHeight: 44, borderRadius: 999, alignItems: 'center', justifyContent: 'center', backgroundColor: on ? colors.inkBlue : 'transparent' }}>
+            style={{ flex: 1, minHeight: 44, borderRadius: 999, alignItems: 'center', justifyContent: 'center' }}>
             <Text weight={on ? 'bold' : 'semi'} style={{ color: on ? colors.onInkBlue : colors.muted }}>{o.label}</Text>
           </Pressable>
         );
