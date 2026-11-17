@@ -4,8 +4,8 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Path, Svg } from 'react-native-svg';
 import { colors, radius, space } from '@dirary/ui';
 import {
-  accountBalance, budgetCoach, dayLabel, dueLabel, findTransferPairs, fixedThisMonth, formatPeso, localDate, monthSummary, needsReview, parseMoneyQuickAdd, recentTransactions, safeToSpend, spendCoach,
-  type Institution, type Transaction,
+  accountBalance, budgetCoach, dayLabel, dueLabel, findTransferPairs, fixedThisMonth, formatPeso, formatPesoShort, monthName, monthlyRecap, recapLine, localDate, monthSummary, needsReview, parseMoneyQuickAdd, recentTransactions, safeToSpend, spendCoach,
+  type Institution, type MonthRecap, type Transaction,
 } from '@dirary/shared';
 
 import { Mascot } from '@/components/mascot';
@@ -46,6 +46,7 @@ export default function MoneyScreen() {
   const safePct = safe.dailyLimit === 0 ? (safe.spentToday > 0 ? 100 : 0) : Math.min(100, Math.round((safe.spentToday / safe.dailyLimit) * 100));
   const shortcuts = categories.filter((c) => c.kind === 'expense').slice(0, 4);
   const over = safe.ready && safe.safeToday < 0;
+  const recap = useMemo(() => monthlyRecap(transactions, today, toLocal), [transactions, today]);
 
   // The floating + button opens the add form.
   useAddRequest('money', () => setSheet({ kind: 'tx', tx: null }));
@@ -278,6 +279,8 @@ export default function MoneyScreen() {
           <View style={styles.row}><Chip dashed label="Edit categories and budgets" onPress={() => setSheet({ kind: 'categories' })} /></View>
         </Group>
 
+        <Recap months={recap} />
+
         {days.length === 0 ? (
           <Card style={{ alignItems: 'center', paddingVertical: space[8] }}>
             <Mascot mood="sleepy" size={128} />
@@ -294,6 +297,52 @@ export default function MoneyScreen() {
       {sheet?.kind === 'accounts' && <AccountsEditor accounts={accounts} onClose={() => setSheet(null)} />}
       {sheet?.kind === 'categories' && <CategoriesEditor categories={categories} onClose={() => setSheet(null)} />}
     </View>
+  );
+}
+
+/** Money in, spent and kept for this month, with up to six months side by side. */
+function Recap({ months }: { months: MonthRecap[] }) {
+  const now = months[months.length - 1];
+  const top = Math.max(1, ...months.flatMap((m) => [m.income, m.spent]));
+  const bar = (v: number, color: string) => <View style={{ flex: 1, height: Math.max(2, Math.round((v / top) * 96)), borderTopLeftRadius: 6, borderTopRightRadius: 6, backgroundColor: color }} />;
+  const figure = (label: string, value: number, color: string = colors.text) => (
+    <View style={{ flex: 1, gap: 2 }}>
+      <Text variant="label" muted>{label}</Text>
+      <Text variant="heading" numberOfLines={1} adjustsFontSizeToFit style={[NUM, { color }]}>{formatPeso(value)}</Text>
+    </View>
+  );
+  return (
+    <Card>
+      <Text variant="small" weight="bold" style={LABEL}>MONTHLY RECAP</Text>
+      {now && (
+        <>
+          <View style={[styles.row, { alignItems: 'flex-start' }]}>
+            {figure('In', now.income)}
+            {figure('Spent', now.spent)}
+            {figure('Kept', now.saved, now.saved < 0 ? colors.red : colors.inkBlue)}
+          </View>
+          <Text variant="label" muted>{monthName(now.month, true)} so far</Text>
+          <View style={{ flexDirection: 'row', gap: space[2], marginTop: space[1] }}>
+            {months.map((m) => (
+              <View key={m.month} accessible accessibilityLabel={`${monthName(m.month, true)}: ${formatPeso(m.income)} in, ${formatPeso(m.spent)} spent, ${formatPeso(m.saved)} kept`} style={{ flex: 1, alignItems: 'center', gap: 4 }}>
+                <View style={{ height: 96, width: '100%', maxWidth: 44, flexDirection: 'row', alignItems: 'flex-end', gap: 3, borderBottomWidth: 1, borderColor: colors.line }}>
+                  {bar(m.income, colors.inkBlue)}
+                  {bar(m.spent, colors.muted)}
+                </View>
+                <Text variant="small" weight="semi" muted>{monthName(m.month)}</Text>
+                <Text variant="small" weight="bold" numberOfLines={1} style={[NUM, m.saved < 0 && { color: colors.red }]}>{formatPesoShort(m.saved)}</Text>
+              </View>
+            ))}
+          </View>
+          <View style={[styles.row, { flexWrap: 'wrap', gap: space[4] }]} accessibilityElementsHidden importantForAccessibility="no-hide-descendants">
+            <View style={[styles.row, { gap: 6 }]}><View style={{ width: 10, height: 10, borderRadius: 3, backgroundColor: colors.inkBlue }} /><Text variant="small" muted>In</Text></View>
+            <View style={[styles.row, { gap: 6 }]}><View style={{ width: 10, height: 10, borderRadius: 3, backgroundColor: colors.muted }} /><Text variant="small" muted>Spent</Text></View>
+            <Text variant="small" muted>Number below: kept</Text>
+          </View>
+        </>
+      )}
+      <Text muted={!now}>{recapLine(months, formatPeso)}</Text>
+    </Card>
   );
 }
 

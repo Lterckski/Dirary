@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState, type FormEvent, type ReactNode } from 'react';
 import {
   INSTITUTIONS, INSTITUTION_LABEL, LIST_COLORS, TransactionDraft, accountBalance, budgetCoach, dayLabel, findTransferPairs, formatPeso, guessMapping,
-  dueLabel, fixedThisMonth, localDate, monthSummary, needsReview, parseAmount, parseCsv, parseMoneyQuickAdd, recentTransactions, rowsToTransactions, safeToSpend, spendCoach,
+  dueLabel, fixedThisMonth, formatPesoShort, monthName, monthlyRecap, recapLine, localDate, monthSummary, needsReview, parseAmount, parseCsv, parseMoneyQuickAdd, recentTransactions, rowsToTransactions, safeToSpend, spendCoach,
   type Account, type Category, type CsvMapping, type FixedExpense, type Institution, type ListColor, type Transaction,
 } from '@dirary/shared';
 import { Mascot } from '../Mascot';
@@ -36,6 +36,7 @@ export function Money() {
   const total = accounts.reduce((sum, a) => sum + accountBalance(a, transactions), 0);
   const safePct = safe.dailyLimit === 0 ? (safe.spentToday > 0 ? 100 : 0) : Math.min(100, Math.round((safe.spentToday / safe.dailyLimit) * 100));
   const shortcuts = categories.filter((c) => c.kind === 'expense').slice(0, 4);
+  const recap = useMemo(() => monthlyRecap(transactions, today, toLocal), [transactions, today]);
 
   // The floating + button asks the current screen to start adding.
   useEffect(() => {
@@ -241,6 +242,8 @@ export function Money() {
               </ul>
             )}
           </section>
+
+          <Recap months={recap} />
 
           <section className="group" aria-label="Recent transactions">
             {days.length === 0 ? (
@@ -687,5 +690,41 @@ function FixedDialog({ store, onClose }: { store: MoneyStore; onClose: () => voi
         <div className="actions"><span className="grow" /><button type="button" className="btn" onClick={onClose}>Done</button><button type="submit" className="btn primary">Add</button></div>
       </form>
     </Modal>
+  );
+}
+
+/** Money in, spent and kept for this month, with up to six months side by side. */
+function Recap({ months }: { months: ReturnType<typeof monthlyRecap> }) {
+  const now = months[months.length - 1];
+  const top = Math.max(1, ...months.flatMap((m) => [m.income, m.spent]));
+  const pct = (v: number) => `${Math.round((v / top) * 100)}%`;
+  return (
+    <section className="card recap" aria-labelledby="recap-title">
+      <h2 id="recap-title" className="card-label">Monthly recap</h2>
+      {now && (
+        <>
+          <dl className="recap-figures">
+            <div><dt>In</dt><dd>{formatPeso(now.income)}</dd></div>
+            <div><dt>Spent</dt><dd>{formatPeso(now.spent)}</dd></div>
+            <div><dt>Kept</dt><dd className={now.saved < 0 ? 'late' : 'kept'}>{formatPeso(now.saved)}</dd></div>
+          </dl>
+          <p className="note muted">{monthName(now.month, true)} so far</p>
+          <ul className="recap-chart">
+            {months.map((m) => (
+              <li key={m.month} aria-label={`${monthName(m.month, true)}: ${formatPeso(m.income)} in, ${formatPeso(m.spent)} spent, ${formatPeso(m.saved)} kept`}>
+                <div className="recap-bars" aria-hidden="true">
+                  <span className="in" style={{ height: pct(m.income) }} />
+                  <span className="out" style={{ height: pct(m.spent) }} />
+                </div>
+                <span className="recap-month" aria-hidden="true">{monthName(m.month)}</span>
+                <span className={m.saved < 0 ? 'recap-kept late' : 'recap-kept'} aria-hidden="true">{formatPesoShort(m.saved)}</span>
+              </li>
+            ))}
+          </ul>
+          <div className="recap-legend" aria-hidden="true"><span><i className="in" />In</span><span><i className="out" />Spent</span><span>Number below: kept</span></div>
+        </>
+      )}
+      <p className={now ? undefined : 'muted'}>{recapLine(months, formatPeso)}</p>
+    </section>
   );
 }

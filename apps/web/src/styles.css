@@ -262,3 +262,24 @@ input[type='date'].input, input[type='time'].input { cursor: pointer; }
   .fab svg { width: 28px; height: 28px; fill: none; stroke: var(--onInkBlue); stroke-width: 3.2; stroke-linecap: round; }
   .fab:active { transform: scale(0.95); }
 }
+
+/* ---- Monthly recap ---- */
+.recap { gap: 12px; }
+.recap-figures { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; margin: 0; }
+.recap-figures div { min-width: 0; }
+.recap-figures dt { font-size: 13px; color: var(--muted); }
+.recap-figures dd { margin: 2px 0 0; font-family: var(--font-display); font-size: clamp(18px, 4.6vw, 24px); font-variant-numeric: tabular-nums; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.recap-figures dd.kept { color: var(--inkBlue); }
+.recap-figures dd.late { color: var(--red); }
+.recap-chart { list-style: none; margin: 4px 0 0; padding: 0; display: grid; grid-auto-flow: column; grid-auto-columns: minmax(0, 1fr); gap: 8px; }
+.recap-chart li { display: flex; flex-direction: column; align-items: center; gap: 4px; min-width: 0; }
+.recap-bars { height: 96px; width: 100%; max-width: 44px; display: flex; align-items: flex-end; justify-content: center; gap: 3px; border-bottom: 1px solid var(--line); }
+.recap-bars span { flex: 1; min-height: 2px; border-radius: 6px 6px 0 0; }
+.recap-bars .in, .recap-legend .in { background: var(--inkBlue); }
+.recap-bars .out, .recap-legend .out { background: var(--muted); }
+.recap-month { font-size: 12px; font-weight: 600; color: var(--muted); }
+.recap-kept { font-size: 12px; font-weight: 700; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.recap-kept.late { color: var(--red); }
+.recap-legend { display: flex; flex-wrap: wrap; gap: 6px 16px; font-size: 12px; color: var(--muted); }
+.recap-legend span { display: inline-flex; align-items: center; gap: 6px; }
+.recap-legend i { width: 10px; height: 10px; border-radius: 3px; display: inline-block; }
