@@ -152,3 +152,20 @@ export function amountInTask(title: string): number | null {
 export function taskWithoutAmount(title: string): string {
   return title.replace(AMOUNT, '').replace(/\s{2,}/g, ' ').replace(/\s+([,.;:])/g, '$1').trim() || title;
 }
+
+// ---- spending and the food log ----
+
+const FOOD_CATEGORY = /\b(food|foods|groceries|grocery|dining|eating out|restaurants?|meals?|snacks?|drinks?|coffee)\b/i;
+
+/** Money spent on food: confirmed, going out, in a category named like food ("Food", "Groceries", "Dining"). */
+export function isFoodSpend(tx: Pick<Transaction, 'direction' | 'status' | 'category_id' | 'transfer_group_id' | 'deleted_at'>, categories: readonly { id: string; name: string }[]): boolean {
+  if (tx.deleted_at !== null || tx.direction !== 'out' || tx.status !== 'confirmed' || tx.transfer_group_id !== null || !tx.category_id) return false;
+  const category = categories.find((c) => c.id === tx.category_id);
+  return !!category && FOOD_CATEGORY.test(category.name);
+}
+
+/** The category a meal's price goes under: one named "Food" first, else any food-like expense category. */
+export function foodCategoryId(categories: readonly { id: string; name: string; kind: string; deleted_at?: string | null }[]): string | null {
+  const live = categories.filter((c) => c.kind === 'expense' && !c.deleted_at);
+  return (live.find((c) => c.name.trim().toLowerCase() === 'food') ?? live.find((c) => FOOD_CATEGORY.test(c.name)))?.id ?? null;
+}

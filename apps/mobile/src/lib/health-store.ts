@@ -2,13 +2,14 @@
 import * as Crypto from 'expo-crypto';
 import { useCallback, useEffect, useState } from 'react';
 import {
-  FOODS_TABLE, FOOD_LOGS_TABLE, HEALTH_GOALS_TABLE, WATER_LOGS_TABLE, addDays, currentGoals, localDate, nutrition, servingsOf, servingsText, waterTap,
+  FOODS_TABLE, FOOD_LOGS_TABLE, HEALTH_GOALS_TABLE, WATER_LOGS_TABLE, addDays, currentGoals, localDate, nutrition, offProductUrl, parseOffProduct, servingsOf, servingsText, waterTap,
   type Food, type FoodLog, type HealthGoals, type Meal, type Serving, type StarterFood, type WaterLog,
 } from '@dirary/shared';
 
 import { readFoodLogs, readFoods, readHealthGoals, readWater, saveLocal } from './db';
 import { supabase } from './supabase';
 import { subscribeStore, syncTasks } from './tasks-store';
+import { refreshWidgets } from '../widgets/refresh';
 
 const now = () => new Date().toISOString();
 const listeners = new Set<() => void>();
@@ -17,17 +18,18 @@ const DAYS_LOADED = 30;
 
 async function changed() {
   for (const listener of listeners) listener();
+  refreshWidgets().catch(() => {});
   syncTasks(); // one sync covers every table
 }
 
-export interface FoodDraft { name: string; kcal_per_100g: number; protein_per_100g: number; servings: Serving[] }
+export interface FoodDraft { name: string; kcal_per_100g: number; protein_per_100g: number; servings: Serving[]; barcode?: string | null }
 
 /** Creates or updates one of your foods. Returns the saved food. */
 export async function saveFood(draft: FoodDraft, existing: Food | null): Promise<Food> {
   const stamp = now();
   const row: Food = existing
     ? { ...existing, name: draft.name, kcal_per_100g: draft.kcal_per_100g, protein_per_100g: draft.protein_per_100g, servings: servingsText(draft.servings), updated_at: stamp }
-    : { id: Crypto.randomUUID(), name: draft.name, source: 'own', source_ref: null, kcal_per_100g: draft.kcal_per_100g, protein_per_100g: draft.protein_per_100g, servings: servingsText(draft.servings), barcode: null, created_at: stamp, updated_at: stamp, deleted_at: null };
+    : { id: Crypto.randomUUID(), name: draft.name, source: 'own', source_ref: null, kcal_per_100g: draft.kcal_per_100g, protein_per_100g: draft.protein_per_100g, servings: servingsText(draft.servings), barcode: draft.barcode ?? null, created_at: stamp, updated_at: stamp, deleted_at: null };
   await saveLocal(FOODS_TABLE, row);
   await changed();
   return row;
@@ -44,7 +46,7 @@ export async function logFood(pick: { food: Food | null; starter: StarterFood | 
   let food = pick.food;
   if (!food && pick.starter) {
     const s = pick.starter;
-    food = { id: Crypto.randomUUID(), name: s.name, source: s.source, source_ref: s.key, kcal_per_100g: s.kcal_per_100g, protein_per_100g: s.protein_per_100g, servings: servingsText([...s.servings, ...(addServing ? [addServing] : [])]), barcode: null, created_at: stamp, updated_at: stamp, deleted_at: null };
+    food = { id: Crypto.randomUUID(), name: s.name, source: s.source, source_ref: s.key, kcal_per_100g: s.kcal_per_100g, protein_per_100g: s.protein_per_100g, servings: servingsText([...s.servings, ...(addServing ? [addServing] : [])]), barcode: s.barcode ?? null, created_at: stamp, updated_at: stamp, deleted_at: null };
     await saveLocal(FOODS_TABLE, food);
   } else if (food && addServing) {
     food = { ...food, servings: servingsText([...servingsOf(food), addServing]), updated_at: stamp };
@@ -89,6 +91,20 @@ export async function tapWater(water: WaterLog[], n: number): Promise<void> {
   }
   for (const w of remove) await saveLocal(WATER_LOGS_TABLE, { ...w, deleted_at: stamp, updated_at: stamp });
   await changed();
+}
+
+/**
+ * What a scanned barcode is: one of your foods first, then Open Food Facts. Null when neither knows it
+ * (you then add it from the label, and it's yours the next time you scan it). Throws when offline.
+ */
+export async function lookUpBarcode(code: string, foods: readonly Food[]): Promise<{ food: Food | null; starter: StarterFood | null } | null> {
+  const mine = foods.find((f) => f.deleted_at === null && f.barcode === code);
+  if (mine) return { food: mine, starter: null };
+  const res = await fetch(offProductUrl(code), { headers: { 'User-Agent': 'Dirary/1.0 (personal food log)' } });
+  if (res.status === 404) return null;
+  if (!res.ok) throw new Error(`Open Food Facts answered ${res.status}`);
+  const starter = parseOffProduct(await res.json(), code);
+  return starter ? { food: null, starter } : null;
 }
 
 /** Live foods, log, targets and water for the Health screen. */

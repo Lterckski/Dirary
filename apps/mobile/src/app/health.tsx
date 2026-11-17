@@ -1,13 +1,14 @@
-import { useMemo, useRef, useState, type ComponentRef } from 'react';
+import { useEffect, useMemo, useRef, useState, type ComponentRef } from 'react';
+import { useLocalSearchParams } from 'expo-router';
 import { Pressable, ScrollView, TextInput, View } from 'react-native';
 import Animated from 'react-native-reanimated';
 import Svg, { Circle, Path } from 'react-native-svg';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { colors, radius, space } from '@dirary/ui';
 import {
-  FOOD_SOURCE_LABEL, MEALS, MEAL_LABEL, STARTER_FOODS, amountLabel, dayTotals, foodCoach, formatGrams, formatKcal, glassesOn, localDate, mealAt, nutrition,
+  FOOD_SOURCE_LABEL, MEALS, MEAL_LABEL, STARTER_FOODS, amountLabel, foodCategoryId, formatPeso, parseAmount, dayTotals, foodCoach, formatGrams, formatKcal, glassesOn, localDate, mealAt, nutrition,
   parseGrams, recentFoods, searchFoods, servingsOf,
-  type Food, type FoodLog, type HealthGoals, type Meal, type Serving, type StarterFood,
+  type Account, type Category, type Food, type FoodLog, type HealthGoals, type Meal, type Serving, type StarterFood,
 } from '@dirary/shared';
 
 import { Mascot } from '@/components/mascot';
@@ -16,14 +17,19 @@ import { Chip } from '@/components/task-bits';
 import { Field, Sheet, Wrap } from '@/components/task-editor';
 import { Button, Card, TAB_BAR_CLEARANCE, Text, styles } from '@/components/ui';
 import { useAddRequest } from '@/lib/add-bus';
-import { logFood, removeFood, removeLog, saveFood, saveGoals, tapWater, updateLog, useHealthStore } from '@/lib/health-store';
-import { ENTER } from '@/lib/motion';
+import { logFood, lookUpBarcode, removeFood, removeLog, saveFood, saveGoals, tapWater, updateLog, useHealthStore } from '@/lib/health-store';
+import { BarcodeScanner } from '@/components/barcode-scanner';
+import { ENTER, LEAVE } from '@/lib/motion';
+import { TransactionEditor } from '@/components/money-editor';
+import { readAccounts, readCategories } from '@/lib/db';
+import { useUsdaSearch } from '@/lib/usda-search';
 
 type Pick = { food: Food | null; starter: StarterFood | null };
 type Open =
   | { kind: 'log'; pick: Pick; grams?: number; meal?: Meal }
   | { kind: 'edit'; log: FoodLog }
-  | { kind: 'food'; food: Food | null; name?: string }
+  | { kind: 'food'; food: Food | null; name?: string; barcode?: string }
+  | { kind: 'scan' }
   | { kind: 'goals' }
   | null;
 
@@ -54,11 +60,51 @@ export default function HealthScreen() {
   const coach = foodCoach(totals, goals, hour);
   const again = useMemo(() => recentFoods(logs, foods), [logs, foods]);
   const results = useMemo(() => searchFoods(query, foods, STARTER_FOODS, 6), [query, foods]);
+  const usda = useUsdaSearch(query);
+  // USDA foods you've already saved show up under your own foods instead.
+  const remote = usda.results.filter((u) => !foods.some((f) => f.source_ref === u.key)).slice(0, 6);
   const glasses = glassesOn(water, today);
   const glassGoal = goals?.water_glasses ?? 8;
   const kcalLeft = goals?.kcal_target ? Math.round(goals.kcal_target - totals.kcal) : null;
 
   useAddRequest('health', () => input.current?.focus());
+  // The Food widget's + opens Health with ?log=1; Money's "Log what you ate?" chip adds the place you paid as q.
+  const params = useLocalSearchParams<{ log?: string; q?: string }>();
+  useEffect(() => {
+    if (!params.log) return;
+    if (params.q) setQuery(params.q);
+    setTimeout(() => input.current?.focus(), 300);
+  }, [params.log, params.q]);
+
+  // A meal logged with what you paid offers to log the expense; "Log it" opens the expense form, filled in.
+  const [paid, setPaid] = useState<{ amount: number; note: string } | null>(null);
+  const [logging, setLogging] = useState<{ amount: number; note: string; accounts: Account[]; categories: Category[] } | null>(null);
+  useEffect(() => {
+    if (!paid) return;
+    const timer = setTimeout(() => setPaid(null), 10000);
+    return () => clearTimeout(timer);
+  }, [paid]);
+  async function logPaid() {
+    if (!paid) return;
+    const [accounts, categories] = await Promise.all([readAccounts(), readCategories()]);
+    setPaid(null);
+    setLogging({ ...paid, accounts, categories });
+  }
+  const [looking, setLooking] = useState<string | null>(null);
+
+  async function scanned(code: string) {
+    setOpen(null);
+    setLooking('Looking up the barcode…');
+    try {
+      const found = await lookUpBarcode(code, foods);
+      setLooking(null);
+      if (found) return choose(found);
+      setOpen({ kind: 'food', food: null, barcode: code });
+    } catch {
+      setLooking('Couldn’t reach Open Food Facts. Check your connection, or add the food from its label.');
+      setTimeout(() => setLooking(null), 6000);
+    }
+  }
 
   function choose(pick: Pick, grams?: number) {
     setQuery('');
@@ -145,12 +191,19 @@ export default function HealthScreen() {
                 <Pressable accessibilityRole="button" onPress={() => setForMeal(null)} hitSlop={8}><Text variant="label" weight="semi" style={{ color: colors.inkBlue }}>Cancel</Text></Pressable>
               </View>
             )}
-            <View style={{ flexDirection: 'row', alignItems: 'center', gap: space[3], minHeight: 52, paddingHorizontal: space[4], borderRadius: 18, borderWidth: 1, borderColor: query ? colors.inkBlue : colors.line, backgroundColor: colors.surface }}>
+            <View style={{ flexDirection: 'row', gap: space[3] }}>
+            <View style={{ flex: 1, flexDirection: 'row', alignItems: 'center', gap: space[3], minHeight: 52, paddingHorizontal: space[4], borderRadius: 18, borderWidth: 1, borderColor: query ? colors.inkBlue : colors.line, backgroundColor: colors.surface }}>
               <Svg width={20} height={20} viewBox="0 0 24 24"><Circle cx={11} cy={11} r={7} fill="none" stroke={colors.muted} strokeWidth={2} /><Path d="M20 20l-4-4" stroke={colors.muted} strokeWidth={2} strokeLinecap="round" /></Svg>
               <TextInput ref={input} accessibilityLabel="Search foods" value={query} onChangeText={setQuery} placeholder="Search foods: rice, adobo, egg" placeholderTextColor={colors.faint}
                 style={{ flex: 1, minHeight: 48, color: colors.text, fontSize: 16 }} returnKeyType="search" autoCorrect={false}
                 onSubmitEditing={() => { const r = results[0]; if (r) choose({ food: r.food, starter: r.starter }); }} />
             </View>
+            <Pressable accessibilityRole="button" accessibilityLabel="Scan a barcode" onPress={() => { input.current?.blur(); setOpen({ kind: 'scan' }); }}
+              style={({ pressed }) => ({ width: 52, height: 52, borderRadius: 18, backgroundColor: colors.inkBlue, alignItems: 'center', justifyContent: 'center', opacity: pressed ? 0.8 : 1 })}>
+              <Svg width={24} height={24} viewBox="0 0 24 24"><Path d="M3 7V4h3M18 4h3v3M21 17v3h-3M6 20H3v-3M7 8v8M10 8v8M13 8v8M17 8v8" fill="none" stroke={colors.onInkBlue} strokeWidth={2} strokeLinecap="round" /></Svg>
+            </Pressable>
+            </View>
+            {looking && <Text variant="label" muted accessibilityLiveRegion="polite">{looking}</Text>}
             {query.trim() !== '' && (
               <Animated.View entering={ENTER} style={{ borderRadius: 20, borderWidth: 1, borderColor: colors.line, backgroundColor: colors.raised, padding: 6 }}>
                 {results.map((r) => (
@@ -160,6 +213,14 @@ export default function HealthScreen() {
                     <Text variant="small" weight="bold" style={{ color: r.source === 'own' ? colors.inkBlue : colors.muted, letterSpacing: 0.8 }}>{FOOD_SOURCE_LABEL[r.source].toUpperCase()}</Text>
                   </Pressable>
                 ))}
+                {remote.map((u) => (
+                  <Pressable key={u.key} accessibilityRole="button" onPress={() => choose({ food: null, starter: u })}
+                    style={({ pressed }) => ({ flexDirection: 'row', alignItems: 'center', gap: space[3], minHeight: 48, paddingHorizontal: space[3], borderRadius: 14, backgroundColor: pressed ? colors.surface : 'transparent' })}>
+                    <Text weight="semi" style={{ flex: 1 }} numberOfLines={2}>{u.name}</Text>
+                    <Text variant="small" weight="bold" style={{ color: colors.muted, letterSpacing: 0.8 }}>USDA</Text>
+                  </Pressable>
+                ))}
+                {(usda.searching || usda.problem) && <Text variant="label" style={{ color: colors.faint, paddingHorizontal: space[3], paddingVertical: space[2] }}>{usda.problem ?? 'Searching USDA…'}</Text>}
                 <Pressable accessibilityRole="button" onPress={() => { const name = query.trim(); setQuery(''); input.current?.blur(); setOpen({ kind: 'food', food: null, name }); }}
                   style={({ pressed }) => ({ minHeight: 48, justifyContent: 'center', paddingHorizontal: space[3], borderRadius: 14, backgroundColor: pressed ? colors.surface : 'transparent' })}>
                   <Text weight="semi" muted numberOfLines={1}>+ New food “{query.trim()}”</Text>
@@ -207,12 +268,33 @@ export default function HealthScreen() {
         </View>
       </ScrollView>
 
-      {open?.kind === 'log' && <LogSheet pick={open.pick} grams={open.grams} meal={open.meal ?? mealAt(hour)} totals={totals} goals={goals}
+      {open?.kind === 'log' && <LogSheet onPaid={(amount, note) => setPaid({ amount, note })} pick={open.pick} grams={open.grams} meal={open.meal ?? mealAt(hour)} totals={totals} goals={goals}
         onEditFood={open.pick.food ? () => setOpen({ kind: 'food', food: open.pick.food }) : undefined} onClose={() => setOpen(null)} />}
       {open?.kind === 'edit' && <EditLogSheet log={open.log} food={foods.find((f) => f.id === open.log.food_id) ?? null} onClose={() => setOpen(null)} />}
-      {open?.kind === 'food' && <FoodSheet food={open.food} name={open.name} onClose={() => setOpen(null)}
+      {open?.kind === 'scan' && <BarcodeScanner onCode={scanned} onClose={() => setOpen(null)} />}
+      {open?.kind === 'food' && <FoodSheet food={open.food} name={open.name} barcode={open.barcode} onClose={() => setOpen(null)}
         onSaved={(food) => setOpen({ kind: 'log', pick: { food, starter: null }, meal: forMeal ?? undefined })} />}
       {open?.kind === 'goals' && <GoalsSheet goals={goals} onClose={() => setOpen(null)} />}
+      {paid && (
+        <Animated.View entering={ENTER} exiting={LEAVE} accessibilityLiveRegion="polite"
+          style={{ position: 'absolute', left: space[4], right: space[4], bottom: insets.bottom + 100, flexDirection: 'row', alignItems: 'center', gap: space[3],
+            paddingLeft: space[5], paddingRight: space[2], paddingVertical: space[2], borderRadius: radius.pill, borderWidth: 1, borderColor: colors.line, backgroundColor: colors.raised }}>
+          <Text variant="label" numberOfLines={1} style={{ flex: 1 }}>
+            Log <Text variant="label" weight="bold" style={NUM}>{formatPeso(paid.amount)}</Text> for {paid.note}?
+          </Text>
+          <Pressable accessibilityRole="button" onPress={logPaid}
+            style={({ pressed }) => ({ minHeight: 40, paddingHorizontal: space[4], borderRadius: radius.pill, backgroundColor: colors.inkBlue, justifyContent: 'center', opacity: pressed ? 0.7 : 1 })}>
+            <Text variant="label" weight="bold" style={{ color: colors.onInkBlue }}>Log it</Text>
+          </Pressable>
+          <Pressable accessibilityRole="button" accessibilityLabel="Not now" onPress={() => setPaid(null)} hitSlop={4} style={{ width: 40, height: 40, alignItems: 'center', justifyContent: 'center' }}>
+            <Text weight="semi" muted>✕</Text>
+          </Pressable>
+        </Animated.View>
+      )}
+      {logging && (
+        <TransactionEditor tx={null} direction="out" amount={logging.amount} note={logging.note} categoryId={foodCategoryId(logging.categories) ?? undefined}
+          accounts={logging.accounts} categories={logging.categories} onClose={() => setLogging(null)} />
+      )}
     </View>
   );
 }
@@ -249,9 +331,11 @@ function Stat({ label, value, sub, color }: { label: string; value: string; sub?
 }
 
 /** Pick an amount (grams or a serving) and a meal, see what it adds up to, and log it. */
-function LogSheet({ pick, grams: startGrams, meal: startMeal, totals, goals, onEditFood, onClose }: {
-  pick: Pick; grams?: number; meal: Meal; totals: ReturnType<typeof dayTotals>; goals: HealthGoals | null; onEditFood?: () => void; onClose: () => void;
+function LogSheet({ pick, grams: startGrams, meal: startMeal, totals, goals, onPaid, onEditFood, onClose }: {
+  pick: Pick; grams?: number; meal: Meal; totals: ReturnType<typeof dayTotals>; goals: HealthGoals | null; onPaid: (amount: number, note: string) => void; onEditFood?: () => void; onClose: () => void;
 }) {
+  const [price, setPrice] = useState('');
+  const [problem, setProblem] = useState<string | null>(null);
   const source = pick.food ?? pick.starter;
   const servings: Serving[] = pick.food ? servingsOf(pick.food) : pick.starter?.servings ?? [];
   const [gramsText, setGramsText] = useState(String(startGrams ?? servings[0]?.grams ?? 100));
@@ -269,8 +353,11 @@ function LogSheet({ pick, grams: startGrams, meal: startMeal, totals, goals, onE
     if (!grams) return;
     const label = servingName.trim();
     const addServing = naming && label && !servings.some((s) => s.label.toLowerCase() === label.toLowerCase()) ? { label: label.slice(0, 30), grams } : null;
+    const amount = price.trim() ? parseAmount(price) : null;
+    if (price.trim() && !amount) return setProblem('Enter what you paid, like 150, or leave it blank.');
     onClose();
     await logFood(pick, grams, meal, addServing);
+    if (amount) onPaid(amount, source!.name);
   }
 
   return (
@@ -292,6 +379,10 @@ function LogSheet({ pick, grams: startGrams, meal: startMeal, totals, goals, onE
         <Stat label="PROTEIN" value={`${Math.round(n.protein)} g`} color={colors.tongue} sub={proteinAfter === null ? undefined : proteinAfter > 0 ? `${proteinAfter} g to go after this` : 'Target reached'} />
       </View>
       <Segmented<Meal> label="Meal" value={meal} options={MEAL_OPTIONS} onChange={setMeal} />
+      <Field label="Paid (optional)">
+        <TextInput accessibilityLabel="What you paid, in pesos" style={[styles.input, { width: 140 }]} value={price} onChangeText={setPrice} keyboardType="decimal-pad" placeholder="₱150" placeholderTextColor={colors.faint} />
+      </Field>
+      {problem && <Text variant="label" style={{ color: colors.red }} accessibilityRole="alert">{problem}</Text>}
       <Button primary label={`Add to ${meal === 'snack' ? 'snacks' : MEAL_LABEL[meal].toLowerCase()}`} disabled={!grams} onPress={add} />
     </Sheet>
   );
@@ -319,7 +410,7 @@ function EditLogSheet({ log, food, onClose }: { log: FoodLog; food: Food | null;
 }
 
 /** Add a food of your own (from its label, or PhilFCT by hand), or change one. */
-function FoodSheet({ food, name: startName, onSaved, onClose }: { food: Food | null; name?: string; onSaved: (food: Food) => void; onClose: () => void }) {
+function FoodSheet({ food, name: startName, barcode, onSaved, onClose }: { food: Food | null; name?: string; barcode?: string; onSaved: (food: Food) => void; onClose: () => void }) {
   const [name, setName] = useState(food?.name ?? startName ?? '');
   const [kcal, setKcal] = useState(food ? String(food.kcal_per_100g) : '');
   const [protein, setProtein] = useState(food ? String(food.protein_per_100g) : '');
@@ -342,14 +433,15 @@ function FoodSheet({ food, name: startName, onSaved, onClose }: { food: Food | n
     if (!name.trim()) return setProblem('Give the food a name.');
     if (!kcal.trim() || !Number.isFinite(k) || k < 0 || k > 900) return setProblem('Calories per 100 g should be between 0 and 900.');
     if (!protein.trim() || !Number.isFinite(p) || p < 0 || p > 100) return setProblem('Protein per 100 g should be between 0 and 100.');
-    onSaved(await saveFood({ name: name.trim().slice(0, 80), kcal_per_100g: Math.round(k * 10) / 10, protein_per_100g: Math.round(p * 10) / 10, servings }, food));
+    onSaved(await saveFood({ name: name.trim().slice(0, 80), kcal_per_100g: Math.round(k * 10) / 10, protein_per_100g: Math.round(p * 10) / 10, servings, barcode: barcode ?? null }, food));
   }
 
   return (
     <Sheet title={food ? 'Edit food' : 'New food'} onClose={onClose}>
       <Field label="Name">
-        <TextInput accessibilityLabel="Name" style={styles.input} value={name} maxLength={80} onChangeText={setName} placeholderTextColor={colors.faint} />
+        <TextInput accessibilityLabel="Name" style={styles.input} value={name} maxLength={80} onChangeText={setName} placeholder={barcode ? 'What’s on the pack' : undefined} placeholderTextColor={colors.faint} autoFocus={!!barcode} />
       </Field>
+      {barcode && <Text variant="label" style={{ color: colors.amber }}>Barcode {barcode} isn’t on Open Food Facts yet. Add it from the label once and it’s yours the next time you scan it.</Text>}
       <Text variant="label" muted>From the nutrition label, or look it up in the Philippine Food Composition Tables (PhilFCT). Use the figures per 100 g.</Text>
       <View style={{ flexDirection: 'row', gap: space[3] }}>
         <View style={{ flex: 1 }}><Field label="Calories per 100 g"><TextInput accessibilityLabel="Calories per 100 grams" style={styles.input} value={kcal} onChangeText={setKcal} keyboardType="decimal-pad" placeholder="157" placeholderTextColor={colors.faint} autoFocus={!!startName} /></Field></View>

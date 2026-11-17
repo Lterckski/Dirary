@@ -95,7 +95,7 @@ export function useHealth() {
     const writes: (() => Result)[] = [];
     if (!food && pick.starter) {
       const s = pick.starter;
-      food = { id: crypto.randomUUID(), name: s.name, source: s.source, source_ref: s.key, kcal_per_100g: s.kcal_per_100g, protein_per_100g: s.protein_per_100g, servings: servingsText([...s.servings, ...(addServing ? [addServing] : [])]), barcode: null, created_at: stamp, updated_at: stamp, deleted_at: null };
+      food = { id: crypto.randomUUID(), name: s.name, source: s.source, source_ref: s.key, kcal_per_100g: s.kcal_per_100g, protein_per_100g: s.protein_per_100g, servings: servingsText([...s.servings, ...(addServing ? [addServing] : [])]), barcode: s.barcode ?? null, created_at: stamp, updated_at: stamp, deleted_at: null };
       const row = food;
       writes.push(() => supabase!.from(FOODS_TABLE).insert(row));
     } else if (food && addServing) {

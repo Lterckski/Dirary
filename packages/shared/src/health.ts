@@ -113,6 +113,8 @@ export interface StarterFood {
   kcal_per_100g: number;
   protein_per_100g: number;
   servings: Serving[];
+  /** For a food found by its barcode. */
+  barcode?: string;
 }
 
 export interface FoodMatch {

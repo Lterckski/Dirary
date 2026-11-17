@@ -1,6 +1,6 @@
 import { FlexWidget, ImageWidget, TextWidget } from 'react-native-android-widget';
 import { colors } from '@dirary/ui';
-import { formatPeso, timeLabel } from '@dirary/shared';
+import { formatKcal, formatPeso, timeLabel } from '@dirary/shared';
 import type { WidgetData } from './data';
 
 const INK = {
@@ -90,6 +90,36 @@ export function TodaySpendWidget({ data }: { data: WidgetData }) {
       <TextWidget
         text={data.budgetLeft === null ? 'No budget set' : over ? `${formatPeso(-data.budgetLeft)} over budget` : `${formatPeso(data.budgetLeft)} left this month`}
         maxLines={1} truncate="END" style={{ fontSize: 12, fontWeight: '600', color: over ? colors.red : colors.muted }} />
+    </FlexWidget>
+  );
+}
+
+/** 2×2 widget: calories and protein left today, and a + that opens the food search. Tap anywhere else to open Health. */
+export function FoodTodayWidget({ data }: { data: WidgetData }) {
+  const kcalLeft = data.kcalTarget === null ? null : Math.round(data.kcalTarget - data.kcalEaten);
+  const proteinLeft = data.proteinTarget === null ? null : Math.max(0, Math.round(data.proteinTarget - data.proteinEaten));
+  const over = kcalLeft !== null && kcalLeft < 0;
+  return (
+    <FlexWidget
+      clickAction="OPEN_URI" clickActionData={{ uri: 'dirary://health' }}
+      style={{ height: 'match_parent', width: 'match_parent', flexDirection: 'column', justifyContent: 'space-between', backgroundColor: colors.surface, borderRadius: 28, padding: 14 }}>
+      <FlexWidget style={{ width: 'match_parent', flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
+        <FlexWidget style={{ width: 32, height: 32, borderRadius: 16, backgroundColor: colors.inkBlue, alignItems: 'center', justifyContent: 'center' }}>
+          <ImageWidget image={INK[data.foodMood]} imageWidth={28} imageHeight={28} />
+        </FlexWidget>
+        <FlexWidget
+          clickAction="OPEN_URI" clickActionData={{ uri: 'dirary://health?log=1' }}
+          style={{ width: 36, height: 36, borderRadius: 18, backgroundColor: colors.inkBlue, alignItems: 'center', justifyContent: 'center' }}>
+          <TextWidget text="+" style={{ fontSize: 22, fontWeight: '800', color: colors.onInkBlue }} />
+        </FlexWidget>
+      </FlexWidget>
+      <FlexWidget style={{ flexDirection: 'column' }}>
+        <TextWidget text={formatKcal(kcalLeft === null ? data.kcalEaten : Math.abs(kcalLeft))} maxLines={1} style={{ fontSize: 28, fontWeight: '800', color: over ? colors.red : colors.text, adjustsFontSizeToFit: true }} />
+        <TextWidget text={kcalLeft === null ? 'kcal eaten today' : over ? 'kcal over today' : 'kcal left today'} maxLines={1} style={{ fontSize: 12, fontWeight: '600', color: colors.muted }} />
+      </FlexWidget>
+      <TextWidget
+        text={proteinLeft === null ? `${Math.round(data.proteinEaten)} g protein` : proteinLeft === 0 ? 'Protein target hit' : `${proteinLeft} g protein to go`}
+        maxLines={1} truncate="END" style={{ fontSize: 12, fontWeight: '700', color: colors.tongue }} />
     </FlexWidget>
   );
 }

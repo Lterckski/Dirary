@@ -551,3 +551,6 @@ input[type='date'].input, input[type='time'].input { cursor: pointer; }
 .chip-x { border: none; background: none; color: var(--muted); font-size: 18px; line-height: 1; padding: 0 0 0 4px; cursor: pointer; }
 .serving-add { flex-wrap: nowrap; gap: 8px; }
 .serving-add .input:first-child { flex: 1 1 auto; min-width: 0; }
+.food-results { max-height: min(60vh, 520px); overflow-y: auto; }
+.food-results li.hint { min-height: 40px; color: var(--faint); font-weight: 500; cursor: default; }
+.field > .input.narrow { flex: none; width: 140px; }

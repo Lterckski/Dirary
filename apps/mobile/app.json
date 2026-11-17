@@ -30,6 +30,14 @@
       "expo-sqlite",
       "expo-font",
       [
+        "expo-camera",
+        {
+          "cameraPermission": "Dirary uses the camera to scan food barcodes.",
+          "microphonePermission": false,
+          "recordAudioAndroid": false
+        }
+      ],
+      [
         "react-native-android-widget",
         {
           "widgets": [
@@ -65,6 +73,17 @@
               "targetCellWidth": 2,
               "targetCellHeight": 2,
               "previewImage": "./assets/widgets/today-spend-preview.png",
+              "updatePeriodMillis": 1800000
+            },
+            {
+              "name": "FoodToday",
+              "label": "Food today",
+              "description": "Calories and protein left today, and a quick way to log food.",
+              "minWidth": "110dp",
+              "minHeight": "110dp",
+              "targetCellWidth": 2,
+              "targetCellHeight": 2,
+              "previewImage": "./assets/widgets/food-today-preview.png",
               "updatePeriodMillis": 1800000
             }
           ]

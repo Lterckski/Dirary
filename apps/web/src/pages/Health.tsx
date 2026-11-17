@@ -1,12 +1,16 @@
 import { useEffect, useMemo, useRef, useState, type CSSProperties, type FormEvent } from 'react';
 import {
-  FOOD_SOURCE_LABEL, MEALS, MEAL_LABEL, STARTER_FOODS, amountLabel, dayTotals, foodCoach, formatGrams, formatKcal, glassesOn, localDate, mealAt, nutrition,
+  FOOD_SOURCE_LABEL, MEALS, MEAL_LABEL, STARTER_FOODS, amountLabel, foodCategoryId, formatPeso, parseAmount, dayTotals, foodCoach, formatGrams, formatKcal, glassesOn, localDate, mealAt, nutrition,
   parseGrams, recentFoods, searchFoods, servingsOf,
   type Food, type FoodLog, type FoodMatch, type Meal, type Serving, type StarterFood,
 } from '@dirary/shared';
 import { Mascot } from '../Mascot';
 import { useHealth, type HealthStore } from '../health/useHealth';
+import { useUsdaSearch } from '../health/useUsdaSearch';
 import { Modal } from '../ui';
+import { useLocation, useNavigate } from 'react-router-dom';
+import { useMoney } from '../money/useMoney';
+import { TxDialog } from './Money';
 
 type Pick = { food: Food | null; starter: StarterFood | null };
 type Dialog =
@@ -26,7 +30,16 @@ const pct = (part: number, whole: number | null | undefined) => (whole ? Math.ma
 
 export function Health() {
   const store = useHealth();
+  const money = useMoney();
   const { foods, logs, goals, water, loading, error } = store;
+  // A meal logged with what you paid offers to log the expense; "Log it" opens the expense form, filled in.
+  const [paid, setPaid] = useState<{ amount: number; note: string } | null>(null);
+  const [logging, setLogging] = useState<{ amount: number; note: string } | null>(null);
+  useEffect(() => {
+    if (!paid) return;
+    const timer = window.setTimeout(() => setPaid(null), 10000);
+    return () => window.clearTimeout(timer);
+  }, [paid]);
   const [dialog, setDialog] = useState<Dialog | null>(null);
   const [query, setQuery] = useState('');
   const [forMeal, setForMeal] = useState<Meal | null>(null);
@@ -39,6 +52,17 @@ export function Health() {
   const again = useMemo(() => recentFoods(logs, foods), [logs, foods]);
   const glasses = glassesOn(water, today);
   const glassGoal = goals?.water_glasses ?? 8;
+
+  // Coming from Money's "Log what you ate?" chip: start a search with the place you paid.
+  const location = useLocation();
+  const navigate = useNavigate();
+  useEffect(() => {
+    const q = (location.state as { foodQuery?: string } | null)?.foodQuery;
+    if (q === undefined) return;
+    setQuery(q);
+    window.setTimeout(() => search.current?.focus(), 50);
+    navigate('.', { replace: true, state: null }); // so a reload doesn't search again
+  }, [location.state, navigate]);
 
   // The floating + button starts a search.
   useEffect(() => {
@@ -173,7 +197,8 @@ export function Health() {
       )}
 
       {dialog?.kind === 'log' && (
-        <LogDialog store={store} pick={dialog.pick} grams={dialog.grams} meal={dialog.meal ?? mealAt(hour)} totals={totals}
+        <LogDialog store={store} pick={dialog.pick} grams={dialog.grams} meal={dialog.meal ?? mealAt(hour)} totals={totals} canPay={money.accounts.length > 0}
+          onPaid={(amount, note) => setPaid({ amount, note })}
           onEditFood={dialog.pick.food ? () => setDialog({ kind: 'food', food: dialog.pick.food }) : undefined} onClose={() => setDialog(null)} />
       )}
       {dialog?.kind === 'edit' && <EditLogDialog store={store} log={dialog.log} onClose={() => setDialog(null)} />}
@@ -187,6 +212,16 @@ export function Health() {
           }} />
       )}
       {dialog?.kind === 'goals' && <GoalsDialog store={store} onClose={() => setDialog(null)} />}
+      {paid && (
+        <div className="offer" role="status">
+          <p>Log <strong>{formatPeso(paid.amount)}</strong> for {paid.note} as an expense?</p>
+          <button type="button" className="btn primary small" onClick={() => { setLogging(paid); setPaid(null); }}>Log it</button>
+          <button type="button" className="offer-close" aria-label="Not now" onClick={() => setPaid(null)}>
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18" /></svg>
+          </button>
+        </div>
+      )}
+      {logging && <TxDialog tx={null} direction="out" amount={logging.amount} note={logging.note} categoryId={foodCategoryId(money.categories) ?? undefined} store={money} onClose={() => setLogging(null)} />}
     </div>
   );
 }
@@ -195,22 +230,34 @@ function FoodSearch({ inputRef, query, setQuery, foods, forMeal, onPick, onNew, 
   inputRef: React.RefObject<HTMLInputElement | null>; query: string; setQuery: (q: string) => void; foods: Food[]; forMeal: Meal | null;
   onPick: (pick: Pick) => void; onNew: (name: string) => void; onCancelMeal: () => void;
 }) {
-  const results: FoodMatch[] = useMemo(() => searchFoods(query, foods, STARTER_FOODS), [query, foods]);
+  const local: FoodMatch[] = useMemo(() => searchFoods(query, foods, STARTER_FOODS), [query, foods]);
+  const usda = useUsdaSearch(query);
+  // USDA foods you've already saved show up under your own foods instead.
+  const remote = usda.results.filter((u) => !foods.some((f) => f.deleted_at === null && f.source_ref === u.key)).slice(0, 8);
+  const options: ({ kind: 'local'; match: FoodMatch } | { kind: 'usda'; food: StarterFood } | { kind: 'new' })[] = query.trim()
+    ? [...local.map((match) => ({ kind: 'local' as const, match })), ...remote.map((food) => ({ kind: 'usda' as const, food })), { kind: 'new' as const }]
+    : [];
   const [active, setActive] = useState(0);
   useEffect(() => setActive(0), [query]);
-  const options = query.trim() ? results.length + 1 : 0;
+  const at = Math.min(active, Math.max(0, options.length - 1));
   function key(e: React.KeyboardEvent) {
-    if (!options) return;
-    if (e.key === 'ArrowDown') { e.preventDefault(); setActive((a) => (a + 1) % options); }
-    if (e.key === 'ArrowUp') { e.preventDefault(); setActive((a) => (a - 1 + options) % options); }
-    if (e.key === 'Enter') { e.preventDefault(); pickAt(active); }
+    if (!options.length) return;
+    if (e.key === 'ArrowDown') { e.preventDefault(); setActive((at + 1) % options.length); }
+    if (e.key === 'ArrowUp') { e.preventDefault(); setActive((at - 1 + options.length) % options.length); }
+    if (e.key === 'Enter') { e.preventDefault(); pickAt(at); }
     if (e.key === 'Escape') setQuery('');
   }
   function pickAt(i: number) {
-    const r = results[i];
-    if (r) onPick({ food: r.food, starter: r.starter });
+    const o = options[i];
+    if (!o) return;
+    if (o.kind === 'local') onPick({ food: o.match.food, starter: o.match.starter });
+    else if (o.kind === 'usda') onPick({ food: null, starter: o.food });
     else onNew(query.trim());
   }
+  const row = (i: number, content: React.ReactNode, extra = '') => (
+    <li key={i} id={`food-opt-${i}`} role="option" aria-selected={i === at} className={`${i === at ? 'on' : ''} ${extra}`.trim()}
+      onMouseDown={(e) => e.preventDefault()} onClick={() => pickAt(i)} onMouseEnter={() => setActive(i)}>{content}</li>
+  );
   return (
     <div className="food-search">
       {forMeal && (
@@ -220,21 +267,19 @@ function FoodSearch({ inputRef, query, setQuery, foods, forMeal, onPick, onNew, 
         <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="7" /><path d="M20 20l-4-4" /></svg>
         <span className="sr-only">Search foods</span>
         <input ref={inputRef} value={query} onChange={(e) => setQuery(e.target.value)} onKeyDown={key} placeholder="Search foods: rice, adobo, egg" autoComplete="off"
-          role="combobox" aria-expanded={options > 0} aria-controls="food-results" aria-activedescendant={options ? `food-opt-${active}` : undefined} />
+          role="combobox" aria-expanded={options.length > 0} aria-controls="food-results" aria-activedescendant={options.length ? `food-opt-${at}` : undefined} />
       </label>
-      {options > 0 && (
-        <ul id="food-results" className="food-results" role="listbox" aria-label="Foods">
-          {results.map((r, i) => (
-            <li key={r.food?.id ?? r.starter!.key} id={`food-opt-${i}`} role="option" aria-selected={i === active} className={i === active ? 'on' : ''}
-              onMouseDown={(e) => e.preventDefault()} onClick={() => pickAt(i)} onMouseEnter={() => setActive(i)}>
-              <span className="grow">{r.name}</span>
-              <span className={r.source === 'own' ? 'source mine' : 'source'}>{FOOD_SOURCE_LABEL[r.source]}</span>
-            </li>
-          ))}
-          <li id={`food-opt-${results.length}`} role="option" aria-selected={active === results.length} className={active === results.length ? 'on new' : 'new'}
-            onMouseDown={(e) => e.preventDefault()} onClick={() => pickAt(results.length)} onMouseEnter={() => setActive(results.length)}>
-            + New food “{query.trim()}”
-          </li>
+      {options.length > 0 && (
+        <ul id="food-results" className="food-results" role="listbox" aria-label="Foods" aria-busy={usda.searching}>
+          {options.map((o, i) => {
+            if (o.kind === 'local') return row(i, <><span className="grow">{o.match.name}</span><span className={o.match.source === 'own' ? 'source mine' : 'source'}>{FOOD_SOURCE_LABEL[o.match.source]}</span></>);
+            if (o.kind === 'usda') return row(i, <><span className="grow">{o.food.name}</span><span className="source">USDA</span></>);
+            return [
+              usda.searching && <li key="searching" className="hint" role="presentation">Searching USDA…</li>,
+              usda.problem && <li key="problem" className="hint" role="presentation">{usda.problem}</li>,
+              row(i, <>+ New food “{query.trim()}”</>, 'new'),
+            ];
+          })}
         </ul>
       )}
     </div>
@@ -242,9 +287,10 @@ function FoodSearch({ inputRef, query, setQuery, foods, forMeal, onPick, onNew, 
 }
 
 /** Pick an amount (grams or a serving) and a meal, see what it adds up to, and log it. */
-function LogDialog({ store, pick, grams: startGrams, meal: startMeal, totals, onEditFood, onClose }: {
-  store: HealthStore; pick: Pick; grams?: number; meal: Meal; totals: ReturnType<typeof dayTotals>; onEditFood?: () => void; onClose: () => void;
+function LogDialog({ store, pick, grams: startGrams, meal: startMeal, totals, canPay, onPaid, onEditFood, onClose }: {
+  store: HealthStore; pick: Pick; grams?: number; meal: Meal; totals: ReturnType<typeof dayTotals>; canPay: boolean; onPaid: (amount: number, note: string) => void; onEditFood?: () => void; onClose: () => void;
 }) {
+  const [price, setPrice] = useState('');
   const source = pick.food ?? pick.starter;
   const servings: Serving[] = pick.food ? servingsOf(pick.food) : pick.starter?.servings ?? [];
   const [gramsText, setGramsText] = useState(String(startGrams ?? servings[0]?.grams ?? 100));
@@ -266,8 +312,11 @@ function LogDialog({ store, pick, grams: startGrams, meal: startMeal, totals, on
     if (!grams) return setProblem('Enter the grams, like 150.');
     const label = servingName.trim();
     const addServing = naming && label && !servings.some((s) => s.label.toLowerCase() === label.toLowerCase()) ? { label: label.slice(0, 30), grams } : null;
+    const amount = price.trim() ? parseAmount(price) : null;
+    if (price.trim() && !amount) return setProblem('Enter what you paid, like 150, or leave it blank.');
     store.logFood(pick, grams, meal, addServing);
     onClose();
+    if (amount) onPaid(amount, source!.name);
   }
 
   return (
@@ -312,6 +361,11 @@ function LogDialog({ store, pick, grams: startGrams, meal: startMeal, totals, on
         <div className="segmented slide-switch" role="radiogroup" aria-label="Meal" style={{ '--n': MEALS.length, '--i': MEALS.indexOf(meal) } as CSSProperties}>
           {MEALS.map((m) => <button key={m} type="button" role="radio" aria-checked={meal === m} aria-pressed={meal === m} onClick={() => setMeal(m)}>{m === 'snack' ? 'Snack' : MEAL_LABEL[m]}</button>)}
         </div>
+        {canPay && (
+          <label className="field">Paid (optional)
+            <input className="input narrow" inputMode="decimal" value={price} onChange={(e) => setPrice(e.target.value)} placeholder="₱150" />
+          </label>
+        )}
         {problem && <p className="note error" role="alert">{problem}</p>}
         <div className="actions">
           <span className="grow" />

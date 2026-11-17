@@ -1,7 +1,7 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties, type FormEvent, type ReactNode, type RefObject } from 'react';
 import {
   INSTITUTIONS, INSTITUTION_LABEL, LIST_COLORS, TransactionDraft, accountBalance, budgetCoach, dayLabel, endOfDayBalances, moveStash, stashProgress, stashSummary, findTransferPairs, formatPeso, guessMapping,
-  dueLabel, fixedThisMonth, formatPesoShort, monthName, monthlyRecap, recapLine, localDate, monthSummary, needsReview, parseAmount, parseCsv, parseMoneyQuickAdd, recentTransactions, rowsToTransactions, safeToSpend, spendCoach,
+  dueLabel, fixedThisMonth, formatPesoShort, isFoodSpend, monthName, monthlyRecap, recapLine, localDate, monthSummary, needsReview, parseAmount, parseCsv, parseMoneyQuickAdd, recentTransactions, rowsToTransactions, safeToSpend, spendCoach,
   type Account, type Category, type CsvMapping, type FixedExpense, type Stash, type Institution, type ListColor, type Transaction,
 } from '@dirary/shared';
 import { confettiFrom } from '../confetti';
@@ -9,6 +9,7 @@ import { Mascot, MascotPaws } from '../Mascot';
 import { useMoney, type MoneyStore } from '../money/useMoney';
 import { DateTimePicker } from '../pickers';
 import { Modal } from '../ui';
+import { useNavigate } from 'react-router-dom';
 
 /** Who the app greets. Dirary is a one-person app. */
 const GREETING_NAME = 'Luther';
@@ -44,6 +45,26 @@ export function Money() {
 
   // New transactions slide in; confirmed "To review" items fold away first.
   const fresh = useFresh(transactions.map((t) => t.id), loading);
+
+  // After you log food spending, a chip offers to log what you ate. Never a pop-up: it goes away on its own.
+  const navigate = useNavigate();
+  const [ate, setAte] = useState<{ query: string } | null>(null);
+  const seenTx = useRef<Set<string> | null>(null);
+  useEffect(() => {
+    if (loading) return;
+    if (!seenTx.current) { seenTx.current = new Set(transactions.map((t) => t.id)); return; }
+    for (const t of transactions) {
+      if (seenTx.current.has(t.id)) continue;
+      seenTx.current.add(t.id);
+      const justNow = Date.now() - new Date(t.created_at).getTime() < 120_000;
+      if (justNow && isFoodSpend(t, categories)) setAte({ query: (t.merchant ?? '').trim() });
+    }
+  }, [transactions, categories, loading]);
+  useEffect(() => {
+    if (!ate) return;
+    const timer = window.setTimeout(() => setAte(null), 10000);
+    return () => window.clearTimeout(timer);
+  }, [ate]);
   const [leaving, setLeaving] = useState<Set<string>>(new Set());
   function confirm(t: Transaction) {
     setLeaving((cur) => new Set(cur).add(t.id));
@@ -409,6 +430,15 @@ export function Money() {
       {dialog?.kind === 'categories' && <CategoriesDialog store={store} onClose={() => setDialog(null)} />}
       {dialog?.kind === 'transfer' && <TransferDialog store={store} onClose={() => setDialog(null)} />}
       {dialog?.kind === 'import' && <ImportDialog store={store} onClose={() => setDialog(null)} />}
+      {ate && (
+        <div className="offer" role="status">
+          <p>Log what you ate{ate.query ? <> at <strong>{ate.query}</strong></> : ''}?</p>
+          <button type="button" className="btn primary small" onClick={() => navigate('/health', { state: { foodQuery: ate.query } })}>Log food</button>
+          <button type="button" className="offer-close" aria-label="Not now" onClick={() => setAte(null)}>
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18" /></svg>
+          </button>
+        </div>
+      )}
     </div>
   );
 }
