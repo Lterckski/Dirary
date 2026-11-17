@@ -236,7 +236,7 @@ export function Money() {
                       type="button" role="checkbox" aria-checked={i.paid} className={i.paid || i.dueIn > 3 ? 'check' : i.dueIn < 0 ? 'check p3' : 'check p2'}
                       aria-label={`${i.expense.name}, ${formatPeso(i.expense.amount_centavos)}, mark ${i.paid ? 'not paid' : 'paid'}`}
                       onClick={() => (i.payment ? store.removeTransaction(i.payment.id) : store.payFixed(i.expense, accounts[0]?.id ?? null))}>
-                      <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M3 8.5 6.5 12 13 4.5" /></svg>
+                      <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M3 8.5 6.5 12 13 4.5" pathLength={1} /></svg>
                     </button>
                     <span className="grow fixed-main">
                       <span className="task-title">{i.expense.name}</span>
