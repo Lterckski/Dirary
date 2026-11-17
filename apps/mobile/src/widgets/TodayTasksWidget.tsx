@@ -1,6 +1,6 @@
 import { FlexWidget, ImageWidget, TextWidget } from 'react-native-android-widget';
 import { colors } from '@dirary/ui';
-import { timeLabel } from '@dirary/shared';
+import { formatPeso, timeLabel } from '@dirary/shared';
 import type { WidgetData } from './data';
 
 const INK = {
@@ -69,6 +69,27 @@ export function InkProgressWidget({ data }: { data: WidgetData }) {
       <ImageWidget image={INK[allDone ? 'cheer' : data.mood]} imageWidth={84} imageHeight={84} />
       <TextWidget text={data.total === 0 ? 'Free day' : `${data.done} of ${data.total}`} style={{ fontSize: 22, fontWeight: '800', color: colors.onInkBlue }} />
       <TextWidget text={data.total === 0 ? 'nothing due' : 'done today'} style={{ fontSize: 12, fontWeight: '700', color: colors.onInkBlue }} />
+    </FlexWidget>
+  );
+}
+
+/** 2×2 widget: what you've spent today and what's left of this month's budgets. Tap to open Money. */
+export function TodaySpendWidget({ data }: { data: WidgetData }) {
+  const over = data.budgetLeft !== null && data.budgetLeft < 0;
+  return (
+    <FlexWidget
+      clickAction="OPEN_URI" clickActionData={{ uri: 'dirary://money' }}
+      style={{ height: 'match_parent', width: 'match_parent', flexDirection: 'column', justifyContent: 'space-between', backgroundColor: colors.surface, borderRadius: 28, padding: 14 }}>
+      <FlexWidget style={{ width: 'match_parent', flexDirection: 'row', alignItems: 'center', flexGap: 8 }}>
+        <FlexWidget style={{ width: 32, height: 32, borderRadius: 16, backgroundColor: colors.inkBlue, alignItems: 'center', justifyContent: 'center' }}>
+          <ImageWidget image={INK[data.moneyMood]} imageWidth={28} imageHeight={28} />
+        </FlexWidget>
+        <TextWidget text="Spent today" style={{ fontSize: 13, fontWeight: '600', color: colors.muted }} />
+      </FlexWidget>
+      <TextWidget text={formatPeso(data.spentToday)} maxLines={1} style={{ fontSize: 28, fontWeight: '800', color: colors.text, adjustsFontSizeToFit: true }} />
+      <TextWidget
+        text={data.budgetLeft === null ? 'No budget set' : over ? `${formatPeso(-data.budgetLeft)} over budget` : `${formatPeso(data.budgetLeft)} left this month`}
+        maxLines={1} truncate="END" style={{ fontSize: 12, fontWeight: '600', color: over ? colors.red : colors.muted }} />
     </FlexWidget>
   );
 }

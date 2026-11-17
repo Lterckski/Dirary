@@ -13,7 +13,7 @@ import { Button, Text, styles } from '@/components/ui';
 
 const pad = (n: number) => String(n).padStart(2, '0');
 
-function Sheet({ title, onClose, children }: { title: string; onClose: () => void; children: ReactNode }) {
+export function Sheet({ title, onClose, children }: { title: string; onClose: () => void; children: ReactNode }) {
   return (
     <Modal visible animationType="slide" onRequestClose={onClose} statusBarTranslucent>
       <SafeAreaView style={styles.screen}>
@@ -27,7 +27,7 @@ function Sheet({ title, onClose, children }: { title: string; onClose: () => voi
   );
 }
 
-function Field({ label, children }: { label: string; children: ReactNode }) {
+export function Field({ label, children }: { label: string; children: ReactNode }) {
   return (
     <View style={{ gap: space[2] }}>
       <Text variant="label" weight="semi" muted>{label}</Text>
@@ -36,7 +36,7 @@ function Field({ label, children }: { label: string; children: ReactNode }) {
   );
 }
 
-const Wrap = ({ children }: { children: ReactNode }) => <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: space[2] }}>{children}</View>;
+export const Wrap = ({ children }: { children: ReactNode }) => <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: space[2] }}>{children}</View>;
 
 export function TaskEditor({ task, lists, onClose, onSave, onDelete }: { task: Task; lists: List[]; onClose: () => void; onSave: (draft: TaskDraft) => void; onDelete: () => void }) {
   const [title, setTitle] = useState(task.title);

@@ -55,6 +55,17 @@
               "targetCellHeight": 2,
               "previewImage": "./assets/widgets/ink-progress-preview.png",
               "updatePeriodMillis": 1800000
+            },
+            {
+              "name": "TodaySpend",
+              "label": "Spent today",
+              "description": "Today's spending and what's left of this month's budgets.",
+              "minWidth": "110dp",
+              "minHeight": "110dp",
+              "targetCellWidth": 2,
+              "targetCellHeight": 2,
+              "previewImage": "./assets/widgets/today-spend-preview.png",
+              "updatePeriodMillis": 1800000
             }
           ]
         }
