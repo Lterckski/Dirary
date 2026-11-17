@@ -1,6 +1,5 @@
-import { DateTimePickerAndroid } from '@react-native-community/datetimepicker';
 import { useState, type ReactNode } from 'react';
-import { Modal, Platform, Pressable, ScrollView, TextInput, View } from 'react-native';
+import { Modal, Pressable, ScrollView, TextInput, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { colors, space } from '@dirary/ui';
 import {
@@ -8,10 +7,10 @@ import {
   remindAt, reminderOf, timeLabel, type List, type ListColor, type Priority, type Recurrence, type Reminder, type Task,
 } from '@dirary/shared';
 
+import { DatePickerSheet, TimePickerSheet } from '@/components/pickers';
 import { Chip } from '@/components/task-bits';
 import { Button, Text, styles } from '@/components/ui';
 
-const pad = (n: number) => String(n).padStart(2, '0');
 
 export function Sheet({ title, onClose, children }: { title: string; onClose: () => void; children: ReactNode }) {
   return (
@@ -50,28 +49,11 @@ export function TaskEditor({ task, lists, onClose, onSave, onDelete }: { task: T
   const [problem, setProblem] = useState<string | null>(null);
   const today = localDate();
 
-  function pickDate() {
-    if (Platform.OS !== 'android') return;
-    const [y, m, d] = (date ?? today).split('-').map(Number) as [number, number, number];
-    DateTimePickerAndroid.open({
-      mode: 'date', value: new Date(y, m - 1, d),
-      onChange: (event, picked) => { if (event.type === 'set' && picked) setDate(localDate(picked)); },
-    });
-  }
-  function pickTime() {
-    if (Platform.OS !== 'android') return;
-    const [hh, mm] = (time ?? '09:00').split(':').map(Number) as [number, number];
-    const value = new Date();
-    value.setHours(hh, mm, 0, 0);
-    DateTimePickerAndroid.open({
-      mode: 'time', value, is24Hour: false,
-      onChange: (event, picked) => {
-        if (event.type !== 'set' || !picked) return;
-        setTime(`${pad(picked.getHours())}:${pad(picked.getMinutes())}`);
-        if (!date) setDate(today);
-        if (reminder === 'none') setReminder('at');
-      },
-    });
+  const [picking, setPicking] = useState<'date' | 'time' | null>(null);
+  function pickTime(picked: string) {
+    setTime(picked);
+    if (!date) setDate(today);
+    if (reminder === 'none') setReminder('at');
   }
 
   function save() {
@@ -97,8 +79,8 @@ export function TaskEditor({ task, lists, onClose, onSave, onDelete }: { task: T
       </Field>
       <Field label="Due">
         <Wrap>
-          <Chip label={date ? dayLabel(date, today) : 'Set date'} active={!!date} onPress={pickDate} />
-          <Chip label={time ? timeLabel(time) : 'Set time'} active={!!time} onPress={pickTime} />
+          <Chip label={date ? dayLabel(date, today) : 'Set date'} active={!!date} onPress={() => setPicking('date')} />
+          <Chip label={time ? timeLabel(time) : 'Set time'} active={!!time} onPress={() => setPicking('time')} />
           {(date || time) && <Chip dashed label="Clear" onPress={() => { setDate(null); setTime(null); }} />}
         </Wrap>
       </Field>
@@ -130,6 +112,8 @@ export function TaskEditor({ task, lists, onClose, onSave, onDelete }: { task: T
       <Pressable accessibilityRole="button" onPress={onDelete} style={{ minHeight: 48, alignItems: 'center', justifyContent: 'center' }}>
         <Text weight="semi" style={{ color: colors.red }}>Delete task</Text>
       </Pressable>
+      {picking === 'date' && <DatePickerSheet value={date} onPick={setDate} onClear={() => { setDate(null); setTime(null); }} onClose={() => setPicking(null)} />}
+      {picking === 'time' && <TimePickerSheet value={time} onPick={pickTime} onClear={() => setTime(null)} onClose={() => setPicking(null)} />}
     </Sheet>
   );
 }
