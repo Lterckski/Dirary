@@ -480,3 +480,16 @@ input[type='date'].input, input[type='time'].input { cursor: pointer; }
 .picker-gap { flex: 1 1 auto; }
 .time-presets { display: grid; grid-template-columns: repeat(4, 1fr); }
 .time-presets .chip { justify-content: center; padding: 0 6px; }
+
+/* ---- "Log ₱450 for Buy dog food?" after ticking a task with an amount ---- */
+.offer { position: fixed; left: 50%; bottom: 24px; z-index: 20; display: flex; align-items: center; gap: 12px; width: max-content; max-width: calc(100vw - 32px); padding: 10px 10px 10px 20px; border: 1px solid var(--line); border-radius: var(--r-pill); background: var(--raised); box-shadow: 0 12px 32px rgba(0, 0, 0, 0.5); transform: translateX(-50%); }
+.offer p { margin: 0; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.offer strong { font-variant-numeric: tabular-nums; }
+.offer-close { flex: none; width: 40px; height: 40px; border: none; border-radius: var(--r-pill); background: none; color: var(--muted); display: grid; place-items: center; cursor: pointer; }
+.offer-close:hover { background: var(--surface); color: var(--text); }
+.offer-close svg { width: 18px; height: 18px; fill: none; stroke: currentColor; stroke-width: 2.2; stroke-linecap: round; }
+@media (max-width: 720px) { .offer { bottom: 104px; } }
+@media (prefers-reduced-motion: no-preference) {
+  .offer { animation: offer-in 220ms var(--ease-out); }
+  @keyframes offer-in { from { opacity: 0; transform: translate(-50%, 12px); } }
+}

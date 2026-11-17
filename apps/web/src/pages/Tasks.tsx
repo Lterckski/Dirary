@@ -1,14 +1,17 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState, type FormEvent } from 'react';
 import {
   GROUPINGS, GROUPING_LABEL, LIST_COLORS, PRIORITIES, PRIORITY_LABEL, RECURRENCES, RECURRENCE_LABEL, REMINDERS, REMINDER_LABEL, TaskDraft, addDays, asRecurrence, dayLabel,
-  defaultReminder, doneView, fromNow, groupTasks, listView, localDate, parseQuickAdd, remindAt, reminderOf, timeLabel, todayCoach, todayView, upcomingView,
+  amountInTask, defaultReminder, doneView, formatPeso, taskWithoutAmount, fromNow, groupTasks, listView, localDate, parseQuickAdd, remindAt, reminderOf, timeLabel, todayCoach, todayView, upcomingView,
   type Grouping, type List, type ListColor, type Priority, type Recurrence, type Reminder, type Task,
 } from '@dirary/shared';
 import { confettiFrom } from '../confetti';
 import { Mascot } from '../Mascot';
 import { DatePicker, TimePicker } from '../pickers';
 import { Modal } from '../ui';
+import { useBillTasks } from '../links/useBillTasks';
+import { useMoney } from '../money/useMoney';
 import { useTasks } from '../tasks/useTasks';
+import { TxDialog } from './Money';
 
 type View = 'today' | 'upcoming' | 'inbox' | 'done' | string; // any other string is a list id
 const FIXED_VIEWS = ['today', 'upcoming', 'inbox', 'done'];
@@ -16,7 +19,17 @@ const toLocal = (iso: string) => localDate(new Date(iso));
 
 export function Tasks() {
   const store = useTasks();
+  const money = useMoney();
+  const bills = useBillTasks(store, money);
   const { tasks, lists, loading, error } = store;
+  // Ticking "Buy dog food ₱450" offers to log the ₱450; tapping Log it opens the expense form, filled in.
+  const [offer, setOffer] = useState<{ amount: number; note: string } | null>(null);
+  const [logging, setLogging] = useState<{ amount: number; note: string } | null>(null);
+  useEffect(() => {
+    if (!offer) return;
+    const timer = window.setTimeout(() => setOffer(null), 10000);
+    return () => window.clearTimeout(timer);
+  }, [offer]);
   const [view, setView] = useState<View>('today');
   const [editing, setEditing] = useState<Task | null>(null);
   const [managing, setManaging] = useState(false);
@@ -47,8 +60,8 @@ export function Tasks() {
   const [phases, setPhases] = useState<Record<string, Phase>>({});
   const waiting = useRef(new Map<string, { task: Task; timers: number[] }>());
   const lastDone = useRef(0);
-  const toggleRef = useRef(store.toggleTask);
-  toggleRef.current = store.toggleTask;
+  const toggleRef = useRef(bills.toggle);
+  toggleRef.current = bills.toggle;
   const setPhase = (id: string, phase: Phase | null) => setPhases((all) => {
     const next = { ...all };
     if (phase) next[id] = phase; else delete next[id];
@@ -60,7 +73,7 @@ export function Tasks() {
   }, []);
 
   function toggle(task: Task) {
-    if (task.status === 'done') return store.toggleTask(task);
+    if (task.status === 'done') return bills.toggle(task);
     const pending = waiting.current.get(task.id);
     if (pending) {
       pending.timers.forEach(clearTimeout);
@@ -77,7 +90,9 @@ export function Tasks() {
         waiting.current.delete(task.id);
         setPhase(task.id, null);
         lastDone.current = Date.now();
-        store.toggleTask(task);
+        bills.toggle(task);
+        const amount = bills.isBill(task) || money.accounts.length === 0 ? null : amountInTask(task.title);
+        if (amount) setOffer({ amount, note: taskWithoutAmount(task.title) });
       }, CHECKED_MS + FOLD_MS),
     ];
     waiting.current.set(task.id, { task, timers });
@@ -217,6 +232,16 @@ export function Tasks() {
         />
       )}
       {managing && <ListsDialog lists={lists} onClose={() => setManaging(false)} onAdd={store.addList} onRename={store.renameList} onDelete={store.removeList} />}
+      {offer && (
+        <div className="offer" role="status">
+          <p>Log <strong>{formatPeso(offer.amount)}</strong> for {offer.note}?</p>
+          <button type="button" className="btn primary small" onClick={() => { setLogging(offer); setOffer(null); }}>Log it</button>
+          <button type="button" className="offer-close" aria-label="Not now" onClick={() => setOffer(null)}>
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18" /></svg>
+          </button>
+        </div>
+      )}
+      {logging && <TxDialog tx={null} direction="out" amount={logging.amount} note={logging.note} store={money} onClose={() => setLogging(null)} />}
     </div>
   );
 }

@@ -474,15 +474,15 @@ function QuickAdd({ store, onMore }: { store: MoneyStore; onMore: (direction: Di
   );
 }
 
-function TxDialog({ tx, categoryId: startCategory, direction: startDirection, accountId: startAccount, store, onTransfer, onClose }: {
-  tx: Transaction | null; categoryId?: string; direction?: Direction; accountId?: string; store: MoneyStore; onTransfer?: () => void; onClose: () => void;
+export function TxDialog({ tx, categoryId: startCategory, direction: startDirection, accountId: startAccount, amount: startAmount, note: startNote, store, onTransfer, onClose }: {
+  tx: Transaction | null; categoryId?: string; direction?: Direction; accountId?: string; amount?: number; note?: string; store: MoneyStore; onTransfer?: () => void; onClose: () => void;
 }) {
-  const [amount, setAmount] = useState(tx ? String(tx.amount_centavos / 100) : '');
+  const [amount, setAmount] = useState(tx ? String(tx.amount_centavos / 100) : startAmount ? String(startAmount / 100) : '');
   const [direction, setDirection] = useState<Direction>(tx?.direction ?? startDirection ?? 'out');
   const [accountId, setAccountId] = useState(tx?.account_id ?? startAccount ?? store.accounts[0]?.id ?? '');
   const [categoryId, setCategoryId] = useState(tx?.category_id ?? startCategory ?? '');
   const [merchant, setMerchant] = useState(tx?.merchant ?? '');
-  const [note, setNote] = useState(tx?.note ?? '');
+  const [note, setNote] = useState(tx?.note ?? startNote ?? '');
   const [when, setWhen] = useState(forInput(tx ? new Date(tx.occurred_at) : new Date()));
   const [problem, setProblem] = useState<string | null>(null);
   const options = store.categories.filter((c) => c.kind === (direction === 'in' ? 'income' : 'expense'));

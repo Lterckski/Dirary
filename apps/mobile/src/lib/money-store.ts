@@ -3,12 +3,12 @@ import * as Crypto from 'expo-crypto';
 import { useCallback, useEffect, useState } from 'react';
 import { AppState } from 'react-native';
 import {
-  ACCOUNTS_TABLE, CATEGORIES_TABLE, FIXED_EXPENSES_TABLE, MONEY_PLANS_TABLE, STARTER_ACCOUNTS, STARTER_CATEGORIES, STASHES_TABLE, TRANSACTIONS_TABLE, checkPassword, currentPlan, passwordProblem, resetMoneyRemote,
+  ACCOUNTS_TABLE, CATEGORIES_TABLE, FIXED_EXPENSES_TABLE, MONEY_PLANS_TABLE, STARTER_ACCOUNTS, STARTER_CATEGORIES, STASHES_TABLE, TASKS_TABLE, TRANSACTIONS_TABLE, billTaskId, checkPassword, localDate, currentPlan, passwordProblem, resetMoneyRemote,
   type Account, type Category, type FixedExpense, type MoneyPlan, type Stash, type Transaction, type TransactionDraft,
 } from '@dirary/shared';
 
 import { processCaptures } from './capture';
-import { readAccounts, readCategories, readFixedExpenses, readMoneyPlans, readStashes, readTransactions, resetMoneyLocal, saveLocal } from './db';
+import { readAccounts, readCategories, readFixedExpenses, readMoneyPlans, readStashes, readTasks, readTransactions, resetMoneyLocal, saveLocal } from './db';
 import { supabase } from './supabase';
 import { subscribeStore, syncTasks } from './tasks-store';
 import { refreshWidgets } from '../widgets/refresh';
@@ -90,8 +90,12 @@ export async function saveFixed(expense: FixedExpense | (Pick<FixedExpense, 'nam
   await changed();
 }
 
+/** Deleting a bill also deletes this month's bill task, unless it was already ticked. */
 export async function removeFixed(expense: FixedExpense): Promise<void> {
-  await saveLocal(FIXED_EXPENSES_TABLE, { ...expense, deleted_at: now(), updated_at: now() });
+  const stamp = now();
+  await saveLocal(FIXED_EXPENSES_TABLE, { ...expense, deleted_at: stamp, updated_at: stamp });
+  const task = (await readTasks()).find((t) => t.id === billTaskId(expense.id, localDate().slice(0, 7)));
+  if (task && task.status === 'todo') await saveLocal(TASKS_TABLE, { ...task, deleted_at: stamp, updated_at: stamp });
   await changed();
 }
 

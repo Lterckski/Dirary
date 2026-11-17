@@ -4,10 +4,11 @@ import { useLocalSearchParams } from 'expo-router';
 import { useEffect, useMemo, useRef, useState, type ComponentRef } from 'react';
 import Animated, { ReduceMotion, useAnimatedStyle, useSharedValue, withSequence, withSpring, withTiming } from 'react-native-reanimated';
 import { Pressable, ScrollView, TextInput, View } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { colors, radius, space } from '@dirary/ui';
 import {
-  GROUPINGS, GROUPING_LABEL, PRIORITIES, PRIORITY_LABEL, RECURRENCE_LABEL, TaskDraft, addDays, dayLabel, defaultReminder, doneView, groupTasks, listView, localDate, parseQuickAdd,
-  remindAt, timeLabel, todayCoach, todayView, upcomingView, type Grouping, type Priority, type Task,
+  GROUPINGS, GROUPING_LABEL, PRIORITIES, PRIORITY_LABEL, RECURRENCE_LABEL, TaskDraft, addDays, amountInTask, dayLabel, formatPeso, taskWithoutAmount, defaultReminder, doneView, groupTasks, listView, localDate, parseQuickAdd,
+  remindAt, timeLabel, todayCoach, todayView, upcomingView, type Account, type Category, type Grouping, type Priority, type Task,
 } from '@dirary/shared';
 
 import { Mascot } from '@/components/mascot';
@@ -15,6 +16,9 @@ import { Confetti } from '@/components/confetti';
 import { Chip, Group, Segmented, TaskRow } from '@/components/task-bits';
 import { CHECKED_MS, EASE_OUT, ENTER, LEAVE, MOVE } from '@/lib/motion';
 import { ListsEditor, TaskEditor } from '@/components/task-editor';
+import { TransactionEditor } from '@/components/money-editor';
+import { isBillTask } from '@/lib/bill-tasks';
+import { readAccounts, readCategories } from '@/lib/db';
 import { Button, Card, Text, styles } from '@/components/ui';
 import { requestReminderPermission } from '@/lib/reminders';
 import { addList, addTask, removeList, removeTask, renameList, toggleTask, updateTask, useTasksStore } from '@/lib/tasks-store';
@@ -103,6 +107,21 @@ export default function TasksScreen() {
   // Ticking a task: it shows as checked for a moment, then folds away as it is saved as done.
   // Ticking it again during that moment cancels. Leaving the screen saves anything still waiting.
   const [ticked, setTicked] = useState<Set<string>>(new Set());
+  // Ticking "Buy dog food ₱450" offers to log the ₱450; Log it opens the expense form, filled in.
+  const [offer, setOffer] = useState<{ amount: number; note: string } | null>(null);
+  const [logging, setLogging] = useState<{ amount: number; note: string; accounts: Account[]; categories: Category[] } | null>(null);
+  useEffect(() => {
+    if (!offer) return;
+    const timer = setTimeout(() => setOffer(null), 10000);
+    return () => clearTimeout(timer);
+  }, [offer]);
+  const insets = useSafeAreaInsets();
+  async function logOffer() {
+    if (!offer) return;
+    const [accounts, categories] = await Promise.all([readAccounts(), readCategories()]);
+    setOffer(null);
+    setLogging({ ...offer, accounts, categories });
+  }
   const waiting = useRef(new Map<string, { task: Task; timer: ReturnType<typeof setTimeout> }>());
   const lastDone = useRef(0);
   const untick = (id: string) => setTicked((cur) => { const next = new Set(cur); next.delete(id); return next; });
@@ -132,10 +151,12 @@ export default function TasksScreen() {
     setJustCompleted(true);
     setTimeout(() => setJustCompleted(false), 2500);
     setTicked((cur) => new Set(cur).add(task.id));
-    const timer = setTimeout(() => {
+    const timer = setTimeout(async () => {
       waiting.current.delete(task.id);
       lastDone.current = Date.now();
-      toggleTask(task);
+      await toggleTask(task);
+      const amount = amountInTask(task.title);
+      if (amount && !(await isBillTask(task))) setOffer({ amount, note: taskWithoutAmount(task.title) });
     }, CHECKED_MS);
     waiting.current.set(task.id, { task, timer });
   }
@@ -318,6 +339,27 @@ export default function TasksScreen() {
           lists={lists} onClose={() => setManaging(false)}
           onAdd={(name, color) => addList(name, color, lists.length)} onRename={renameList} onDelete={removeList}
         />
+      )}
+      {offer && (
+        <Animated.View entering={ENTER} exiting={LEAVE} accessibilityLiveRegion="polite"
+          style={{ position: 'absolute', left: space[4], right: space[4], bottom: insets.bottom + 100, flexDirection: 'row', alignItems: 'center', gap: space[3],
+            paddingLeft: space[5], paddingRight: space[2], paddingVertical: space[2], borderRadius: radius.pill, borderWidth: 1, borderColor: colors.line, backgroundColor: colors.raised }}>
+          <Text variant="label" numberOfLines={1} style={{ flex: 1 }}>
+            Log <Text variant="label" weight="bold" style={{ fontVariant: ['tabular-nums'] }}>{formatPeso(offer.amount)}</Text> for {offer.note}?
+          </Text>
+          <Pressable accessibilityRole="button" onPress={logOffer}
+            style={({ pressed }) => ({ minHeight: 40, paddingHorizontal: space[4], borderRadius: radius.pill, backgroundColor: colors.inkBlue, justifyContent: 'center', opacity: pressed ? 0.7 : 1 })}>
+            <Text variant="label" weight="bold" style={{ color: colors.onInkBlue }}>Log it</Text>
+          </Pressable>
+          <Pressable accessibilityRole="button" accessibilityLabel="Not now" onPress={() => setOffer(null)} hitSlop={4}
+            style={{ width: 40, height: 40, alignItems: 'center', justifyContent: 'center' }}>
+            <Text weight="semi" muted>✕</Text>
+          </Pressable>
+        </Animated.View>
+      )}
+      {logging && (
+        <TransactionEditor tx={null} direction="out" amount={logging.amount} note={logging.note}
+          accounts={logging.accounts} categories={logging.categories} onClose={() => setLogging(null)} />
       )}
       <Confetti shot={shot} origin={origin} />
     </View>

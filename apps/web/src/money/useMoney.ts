@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import {
   ACCOUNTS_TABLE, ACCOUNT_COLUMNS, CATEGORIES_TABLE, CATEGORY_COLUMNS, FIXED_EXPENSES_TABLE, FIXED_EXPENSE_COLUMNS, MONEY_PLANS_TABLE, MONEY_PLAN_COLUMNS,
-  STARTER_ACCOUNTS, STARTER_CATEGORIES, STASHES_TABLE, STASH_COLUMNS, TRANSACTIONS_TABLE, TRANSACTION_COLUMNS, checkPassword, currentPlan, passwordProblem, resetMoneyRemote,
+  STARTER_ACCOUNTS, STARTER_CATEGORIES, STASHES_TABLE, STASH_COLUMNS, TASKS_TABLE, TRANSACTIONS_TABLE, billTaskId, localDate, TRANSACTION_COLUMNS, checkPassword, currentPlan, passwordProblem, resetMoneyRemote,
   type Account, type Category, type FixedExpense, type MoneyPlan, type Stash, type Transaction, type TransactionDraft,
 } from '@dirary/shared';
 import { supabase } from '../supabase';
@@ -183,9 +183,14 @@ export function useMoney() {
     return save(() => setFixed((all) => [...all, row]), () => supabase!.from(FIXED_EXPENSES_TABLE).insert(row));
   }, [fixed.length, save]);
 
+  /** Deleting a bill also deletes this month's bill task, unless it was already ticked. */
   const removeFixed = useCallback((id: string) => {
     const change = { deleted_at: now(), updated_at: now() };
-    return save(() => setFixed((all) => all.filter((e) => e.id !== id)), () => supabase!.from(FIXED_EXPENSES_TABLE).update(change).eq('id', id));
+    return save(() => setFixed((all) => all.filter((e) => e.id !== id)), async () => {
+      const first = await supabase!.from(FIXED_EXPENSES_TABLE).update(change).eq('id', id);
+      if (first.error) return first;
+      return supabase!.from(TASKS_TABLE).update(change).eq('id', billTaskId(id, localDate().slice(0, 7))).eq('status', 'todo');
+    });
   }, [save]);
 
   /** Ticking a fixed expense logs its payment, linked to it so it counts as paid this month. */
@@ -194,6 +199,12 @@ export function useMoney() {
       { account_id: expense.account_id ?? fallbackAccountId, category_id: expense.category_id, amount_centavos: expense.amount_centavos, direction: 'out', merchant: expense.name, note: null, occurred_at: now() },
       { fixed_expense_id: expense.id },
     );
+    return save(() => setTransactions((all) => [row, ...all]), () => supabase!.from(TRANSACTIONS_TABLE).insert(row));
+  }, [save]);
+
+  /** Logs a bill's payment from a ticked bill task (see links.ts). */
+  const payBill = useCallback((draft: TransactionDraft, expenseId: string) => {
+    const row = newTransaction(draft, { fixed_expense_id: expenseId });
     return save(() => setTransactions((all) => [row, ...all]), () => supabase!.from(TRANSACTIONS_TABLE).insert(row));
   }, [save]);
 
@@ -243,7 +254,7 @@ export function useMoney() {
 
   return {
     resetMoney, stashes, stashesReady, saveStash, removeStash,
-    fixed, plan: currentPlan(plans), saveFixed, removeFixed, payFixed, setMonthlyBudget,
+    fixed, plan: currentPlan(plans), saveFixed, removeFixed, payFixed, payBill, setMonthlyBudget,
     accounts, categories, transactions, loading, error,
     addTransaction, updateTransaction, removeTransaction, linkTransfer, addTransfer, importTransactions,
     saveAccount, removeAccount, saveCategory, removeCategory, addStarterSet,

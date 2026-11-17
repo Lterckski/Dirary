@@ -8,6 +8,8 @@ import { supabase } from '../supabase';
 const now = () => new Date().toISOString();
 
 /** Loads lists and tasks, keeps them live, and exposes the changes the screen can make. */
+export type TasksStore = ReturnType<typeof useTasks>;
+
 export function useTasks() {
   const [tasks, setTasks] = useState<Task[]>([]);
   const [lists, setLists] = useState<List[]>([]);
@@ -83,6 +85,21 @@ export function useTasks() {
     );
   }, [save, updateTask]);
 
+  /**
+   * Adds bill tasks made by planBillTasks. Their ids are fixed, so one already in the database (the phone
+   * made it, or it was deleted) is skipped rather than brought back.
+   */
+  const addBillTasks = useCallback(async (rows: Task[]) => {
+    if (!supabase || rows.length === 0) return;
+    const { data, error: lookup } = await supabase.from(TASKS_TABLE).select('id').in('id', rows.map((r) => r.id));
+    if (lookup) return setError(friendly(lookup.message));
+    const seen = new Set((data ?? []).map((r) => (r as { id: string }).id));
+    const missing = rows.filter((r) => !seen.has(r.id));
+    if (missing.length === 0) return;
+    await save(() => setTasks((all) => [...all, ...missing.filter((m) => !all.some((t) => t.id === m.id))]),
+      () => supabase!.from(TASKS_TABLE).upsert(missing, { onConflict: 'id', ignoreDuplicates: true }));
+  }, [save]);
+
   /** Soft delete, so the phone can learn about it when it syncs. */
   const removeTask = useCallback((id: string) => {
     const change = { deleted_at: now(), updated_at: now() };
@@ -107,7 +124,7 @@ export function useTasks() {
     return save(() => setLists((all) => all.filter((l) => l.id !== id)), () => supabase!.from(LISTS_TABLE).update(change).eq('id', id));
   }, [save]);
 
-  return { tasks, lists, loading, error, addTask, updateTask, toggleTask, removeTask, addList, renameList, removeList, reload: load };
+  return { tasks, lists, loading, error, addTask, addBillTasks, updateTask, toggleTask, removeTask, addList, renameList, removeList, reload: load };
 }
 
 function friendly(message: string): string {

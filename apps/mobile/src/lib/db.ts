@@ -107,6 +107,12 @@ export async function readTasks(): Promise<Task[]> {
   return (await db()).getAllAsync<Task>(`SELECT ${TASK_COLUMNS} FROM tasks WHERE deleted_at IS NULL ORDER BY created_at`);
 }
 
+/** Every task id this phone has seen, deleted ones included. */
+export async function readAllTaskIds(): Promise<Set<string>> {
+  const rows = await (await db()).getAllAsync<{ id: string }>('SELECT id FROM tasks');
+  return new Set(rows.map((r) => r.id));
+}
+
 export async function readLists(): Promise<List[]> {
   return (await db()).getAllAsync<List>(`SELECT ${LIST_COLUMNS} FROM lists WHERE deleted_at IS NULL ORDER BY sort_order, created_at`);
 }
