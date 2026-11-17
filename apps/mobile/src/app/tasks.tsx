@@ -6,8 +6,8 @@ import Animated, { ReduceMotion, useAnimatedStyle, useSharedValue, withSequence,
 import { Pressable, ScrollView, TextInput, View } from 'react-native';
 import { colors, radius, space } from '@dirary/ui';
 import {
-  GROUPINGS, GROUPING_LABEL, PRIORITY_LABEL, RECURRENCE_LABEL, TaskDraft, addDays, dayLabel, defaultReminder, doneView, groupTasks, listView, localDate, parseQuickAdd,
-  remindAt, timeLabel, todayCoach, todayView, upcomingView, type Grouping, type Task,
+  GROUPINGS, GROUPING_LABEL, PRIORITIES, PRIORITY_LABEL, RECURRENCE_LABEL, TaskDraft, addDays, dayLabel, defaultReminder, doneView, groupTasks, listView, localDate, parseQuickAdd,
+  remindAt, timeLabel, todayCoach, todayView, upcomingView, type Grouping, type Priority, type Task,
 } from '@dirary/shared';
 
 import { Mascot } from '@/components/mascot';
@@ -31,6 +31,8 @@ export default function TasksScreen() {
   const input = useRef<ComponentRef<typeof TextInput>>(null);
   const [view, setView] = useState<View_>('today');
   const [text, setText] = useState('');
+  // Urgency picked with the chips under the box. "!high" typed in the text wins, as on the web.
+  const [urgency, setUrgency] = useState<Priority>(0);
   const [editing, setEditing] = useState<Task | null>(null);
   const [managing, setManaging] = useState(false);
   const [justCompleted, setJustCompleted] = useState(false);
@@ -76,22 +78,24 @@ export default function TasksScreen() {
 
   // Words in the text ("tomorrow 5pm !high every week") set the date, time, urgency and repeat.
   const read = parseQuickAdd(text, new Date(), lists);
+  const priority: Priority = read.priority || urgency;
   const fallbackDate = view === 'today' ? today : view === 'upcoming' ? addDays(today, 1) : null;
   const dueDate = read.due_date ?? (read.due_time ? today : fallbackDate);
   const understood = [
     read.due_date || read.due_time ? [dueDate ? dayLabel(dueDate, today) : null, read.due_time ? timeLabel(read.due_time) : null].filter(Boolean).join(', ') : null,
-    read.priority ? `${PRIORITY_LABEL[read.priority]} urgency` : null,
+    priority ? `${PRIORITY_LABEL[priority]} urgency` : null,
     read.recurrence ? RECURRENCE_LABEL[read.recurrence].toLowerCase() : null,
     read.list_id ? `in ${listById.get(read.list_id)?.name}` : null,
   ].filter(Boolean);
 
   async function add() {
     const draft = TaskDraft.safeParse({
-      title: read.title, notes: null, due_date: dueDate, due_time: read.due_time, priority: read.priority, list_id: read.list_id ?? activeList?.id ?? null,
+      title: read.title, notes: null, due_date: dueDate, due_time: read.due_time, priority, list_id: read.list_id ?? activeList?.id ?? null,
       remind_at: remindAt(dueDate, read.due_time, defaultReminder(read.due_time)), recurrence_rule: read.recurrence,
     });
     if (!draft.success) return;
     setText('');
+    setUrgency(0);
     if (draft.data.remind_at) await requestReminderPermission();
     await addTask(draft.data);
   }
@@ -277,6 +281,13 @@ export default function TasksScreen() {
               placeholder={activeList ? `Add to ${activeList.name}` : 'Add a task'} placeholderTextColor={colors.faint}
               onChangeText={setText} onSubmitEditing={add} returnKeyType="done" submitBehavior="submit" />
             <Button primary label="Add" disabled={!text.trim()} onPress={add} />
+          </View>
+          <View accessibilityRole="radiogroup" accessibilityLabel="Urgency" style={[styles.row, { flexWrap: 'wrap', gap: space[2] }]}>
+            <Text variant="label" muted style={{ paddingLeft: 4 }}>Urgency</Text>
+            {PRIORITIES.map((p) => (
+              <Chip key={p} label={PRIORITY_LABEL[p]} active={priority === p} dot={p === 3 ? 'red' : p === 2 ? 'amber' : undefined}
+                onPress={() => { setUrgency(p); if (read.priority && p !== read.priority) setText((t) => t.replace(/\s*!(?:high|h|medium|med|m|low|l|[123])\b/i, '')); }} />
+            ))}
           </View>
           <Text variant="label" style={{ color: colors.faint, paddingLeft: 4 }}>
             {understood.length > 0
