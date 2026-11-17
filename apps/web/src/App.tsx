@@ -1,8 +1,8 @@
 import { NavLink, Route, Routes, useLocation, useNavigate } from 'react-router-dom';
 import { HealthIcon, MoneyIcon, TasksIcon, TodayIcon } from './icons';
 import { Mascot } from './Mascot';
-import { ComingSoon } from './pages/ComingSoon';
 import { SetupNeeded, SignIn } from './pages/SignIn';
+import { Health } from './pages/Health';
 import { Money } from './pages/Money';
 import { Tasks } from './pages/Tasks';
 import { Today } from './pages/Today';
@@ -20,9 +20,9 @@ export function App() {
 function Shell() {
   const { pathname } = useLocation();
   const navigate = useNavigate();
-  /** The + button adds to the screen you're on; from Today or Health it starts a task. */
+  /** The + button adds to the screen you're on; from Today it starts a task. */
   function add() {
-    const here = pathname === '/tasks' || pathname === '/money';
+    const here = pathname === '/tasks' || pathname === '/money' || pathname === '/health';
     if (!here) navigate('/tasks');
     window.setTimeout(() => window.dispatchEvent(new Event('dirary:add')), here ? 0 : 80);
   }
@@ -36,7 +36,7 @@ function Shell() {
         </div>
         <NavLink to="/" end><TodayIcon />Today</NavLink>
         <NavLink to="/tasks"><TasksIcon />Tasks</NavLink>
-        <button type="button" className="fab" aria-label={pathname === '/money' ? 'Add a transaction' : 'Add a task'} onClick={add}>
+        <button type="button" className="fab" aria-label={pathname === '/money' ? 'Add a transaction' : pathname === '/health' ? 'Log food' : 'Add a task'} onClick={add}>
           <svg viewBox="0 0 28 28" aria-hidden="true"><path d="M14 5v18M5 14h18" /></svg>
         </button>
         <NavLink to="/money"><MoneyIcon />Money</NavLink>
@@ -50,7 +50,7 @@ function Shell() {
           <Route path="/" element={<Today />} />
           <Route path="/tasks" element={<Tasks />} />
           <Route path="/money" element={<Money />} />
-          <Route path="/health" element={<ComingSoon title="Health" phase="Phase 3" line="Meals and workouts arrive in Phase 3." />} />
+          <Route path="/health" element={<Health />} />
         </Routes>
       </main>
     </div>

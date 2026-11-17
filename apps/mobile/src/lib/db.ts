@@ -10,6 +10,8 @@ import type { SupabaseClient } from '@supabase/supabase-js';
 import {
   ACCOUNTS_TABLE, ACCOUNT_COLUMNS, CATEGORIES_TABLE, CATEGORY_COLUMNS, FIXED_EXPENSES_TABLE, FIXED_EXPENSE_COLUMNS, LISTS_TABLE, LIST_COLUMNS, MONEY_PLANS_TABLE, MONEY_PLAN_COLUMNS,
   STASHES_TABLE, STASH_COLUMNS, TASKS_TABLE, TASK_COLUMNS, TRANSACTIONS_TABLE, TRANSACTION_COLUMNS, remoteWins,
+  FOODS_TABLE, FOOD_COLUMNS, FOOD_LOGS_TABLE, FOOD_LOG_COLUMNS, HEALTH_GOALS_TABLE, HEALTH_GOAL_COLUMNS, WATER_LOGS_TABLE, WATER_LOG_COLUMNS,
+  Food, FoodLog, HealthGoals, WaterLog,
   type Account, type Category, type FixedExpense, type List, type MoneyPlan, type Stash, type Task, type Transaction,
 } from '@dirary/shared';
 
@@ -28,9 +30,15 @@ const TABLES: TableDef[] = [
   { name: MONEY_PLANS_TABLE, select: MONEY_PLAN_COLUMNS, columns: cols(MONEY_PLAN_COLUMNS) },
   { name: TRANSACTIONS_TABLE, select: TRANSACTION_COLUMNS, columns: cols(TRANSACTION_COLUMNS) },
   { name: STASHES_TABLE, select: STASH_COLUMNS, columns: cols(STASH_COLUMNS), optional: true },
+  // Food log (Phase 3a). A log may point at a food, so foods sync first.
+  { name: FOODS_TABLE, select: FOOD_COLUMNS, columns: cols(FOOD_COLUMNS), optional: true },
+  { name: FOOD_LOGS_TABLE, select: FOOD_LOG_COLUMNS, columns: cols(FOOD_LOG_COLUMNS), optional: true },
+  { name: HEALTH_GOALS_TABLE, select: HEALTH_GOAL_COLUMNS, columns: cols(HEALTH_GOAL_COLUMNS), optional: true },
+  { name: WATER_LOGS_TABLE, select: WATER_LOG_COLUMNS, columns: cols(WATER_LOG_COLUMNS), optional: true },
 ];
 const missingTable = (message: string) => /relation .* does not exist|schema cache/i.test(message);
-export type SyncedTable = typeof LISTS_TABLE | typeof TASKS_TABLE | typeof ACCOUNTS_TABLE | typeof CATEGORIES_TABLE | typeof FIXED_EXPENSES_TABLE | typeof MONEY_PLANS_TABLE | typeof TRANSACTIONS_TABLE | typeof STASHES_TABLE;
+export type SyncedTable = typeof LISTS_TABLE | typeof TASKS_TABLE | typeof ACCOUNTS_TABLE | typeof CATEGORIES_TABLE | typeof FIXED_EXPENSES_TABLE | typeof MONEY_PLANS_TABLE | typeof TRANSACTIONS_TABLE | typeof STASHES_TABLE
+  | typeof FOODS_TABLE | typeof FOOD_LOGS_TABLE | typeof HEALTH_GOALS_TABLE | typeof WATER_LOGS_TABLE;
 /** Re-read a little before the cursor, so a change stamped by a device with a slow clock isn't missed. */
 const OVERLAP_MS = 10 * 60 * 1000;
 
@@ -74,6 +82,22 @@ export function db(): Promise<SQLite.SQLiteDatabase> {
         id TEXT PRIMARY KEY NOT NULL, name TEXT NOT NULL, account_id TEXT NOT NULL, amount_centavos INTEGER NOT NULL DEFAULT 0, goal_centavos INTEGER,
         sort_order INTEGER NOT NULL DEFAULT 0, created_at TEXT NOT NULL, updated_at TEXT NOT NULL, deleted_at TEXT, dirty INTEGER NOT NULL DEFAULT 0
       );
+      CREATE TABLE IF NOT EXISTS foods (
+        id TEXT PRIMARY KEY NOT NULL, name TEXT NOT NULL, source TEXT NOT NULL, source_ref TEXT, kcal_per_100g REAL NOT NULL, protein_per_100g REAL NOT NULL,
+        servings TEXT NOT NULL DEFAULT '[]', barcode TEXT, created_at TEXT NOT NULL, updated_at TEXT NOT NULL, deleted_at TEXT, dirty INTEGER NOT NULL DEFAULT 0
+      );
+      CREATE TABLE IF NOT EXISTS food_logs (
+        id TEXT PRIMARY KEY NOT NULL, food_id TEXT, name TEXT NOT NULL, meal TEXT NOT NULL, grams REAL NOT NULL, kcal REAL NOT NULL, protein_g REAL NOT NULL,
+        eaten_on TEXT NOT NULL, created_at TEXT NOT NULL, updated_at TEXT NOT NULL, deleted_at TEXT, dirty INTEGER NOT NULL DEFAULT 0
+      );
+      CREATE INDEX IF NOT EXISTS food_logs_day_idx ON food_logs (eaten_on);
+      CREATE TABLE IF NOT EXISTS health_goals (
+        id TEXT PRIMARY KEY NOT NULL, kcal_target INTEGER, protein_target_g INTEGER, water_glasses INTEGER NOT NULL DEFAULT 8,
+        created_at TEXT NOT NULL, updated_at TEXT NOT NULL, deleted_at TEXT, dirty INTEGER NOT NULL DEFAULT 0
+      );
+      CREATE TABLE IF NOT EXISTS water_logs (
+        id TEXT PRIMARY KEY NOT NULL, drunk_on TEXT NOT NULL, created_at TEXT NOT NULL, updated_at TEXT NOT NULL, deleted_at TEXT, dirty INTEGER NOT NULL DEFAULT 0
+      );
       CREATE TABLE IF NOT EXISTS money_plans (
         id TEXT PRIMARY KEY NOT NULL, monthly_budget_centavos INTEGER,
         created_at TEXT NOT NULL, updated_at TEXT NOT NULL, deleted_at TEXT, dirty INTEGER NOT NULL DEFAULT 0
@@ -99,7 +123,7 @@ async function upsert(database: SQLite.SQLiteDatabase, table: TableDef, row: Row
 const tableOf = (name: string) => TABLES.find((t) => t.name === name)!;
 
 /** Saves a row on the phone and marks it for syncing. */
-export async function saveLocal(table: SyncedTable, row: List | Task | Account | Category | Transaction | FixedExpense | MoneyPlan | Stash): Promise<void> {
+export async function saveLocal(table: SyncedTable, row: List | Task | Account | Category | Transaction | FixedExpense | MoneyPlan | Stash | Food | FoodLog | HealthGoals | WaterLog): Promise<void> {
   await upsert(await db(), tableOf(table), row as unknown as Row, 1);
 }
 
@@ -135,6 +159,25 @@ export async function readFixedExpenses(): Promise<FixedExpense[]> {
 
 export async function readStashes(): Promise<Stash[]> {
   return (await db()).getAllAsync<Stash>(`SELECT ${STASH_COLUMNS} FROM stashes WHERE deleted_at IS NULL ORDER BY sort_order, created_at`);
+}
+
+export async function readFoods(): Promise<Food[]> {
+  const rows = await (await db()).getAllAsync<Food>(`SELECT ${FOOD_COLUMNS} FROM foods WHERE deleted_at IS NULL ORDER BY name`);
+  return rows.flatMap((r) => { const p = Food.safeParse(r); return p.success ? [p.data] : []; });
+}
+
+/** The food log from `since` ("YYYY-MM-DD") on. */
+export async function readFoodLogs(since: string): Promise<FoodLog[]> {
+  const rows = await (await db()).getAllAsync<FoodLog>(`SELECT ${FOOD_LOG_COLUMNS} FROM food_logs WHERE deleted_at IS NULL AND eaten_on >= ? ORDER BY created_at`, [since]);
+  return rows.flatMap((r) => { const p = FoodLog.safeParse(r); return p.success ? [p.data] : []; });
+}
+
+export async function readHealthGoals(): Promise<HealthGoals[]> {
+  return (await db()).getAllAsync<HealthGoals>(`SELECT ${HEALTH_GOAL_COLUMNS} FROM health_goals WHERE deleted_at IS NULL`);
+}
+
+export async function readWater(since: string): Promise<WaterLog[]> {
+  return (await db()).getAllAsync<WaterLog>(`SELECT ${WATER_LOG_COLUMNS} FROM water_logs WHERE deleted_at IS NULL AND drunk_on >= ? ORDER BY created_at`, [since]);
 }
 
 export async function readMoneyPlans(): Promise<MoneyPlan[]> {

@@ -27,7 +27,8 @@ export function FloatingTabBar({ state, descriptors, emitter, navigateToTab, ins
   function add() {
     Haptics.selectionAsync().catch(() => {});
     if (onMoney) return requestAdd('money');
-    // From Today or Health, + starts a task.
+    if (current === 'health') return requestAdd('health'); // + starts a food search
+    // From Today, + starts a task.
     const tasks = state.routes.find((r) => r.name === 'tasks');
     if (current !== 'tasks' && tasks) navigateToTab(tasks.key);
     requestAdd('tasks');
@@ -68,7 +69,7 @@ export function FloatingTabBar({ state, descriptors, emitter, navigateToTab, ins
       </View>
       <Pressable
         accessibilityRole="button"
-        accessibilityLabel={onMoney ? 'Add a transaction' : 'Add a task'}
+        accessibilityLabel={onMoney ? 'Add a transaction' : current === 'health' ? 'Log food' : 'Add a task'}
         onPress={add}
         style={({ pressed }) => ({
           position: 'absolute', alignSelf: 'center', top: -22, width: FAB_SIZE, height: FAB_SIZE, borderRadius: FAB_SIZE / 2,
