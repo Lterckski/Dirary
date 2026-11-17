@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import {
   ACCOUNTS_TABLE, ACCOUNT_COLUMNS, CATEGORIES_TABLE, CATEGORY_COLUMNS, FIXED_EXPENSES_TABLE, FIXED_EXPENSE_COLUMNS, MONEY_PLANS_TABLE, MONEY_PLAN_COLUMNS,
-  STARTER_ACCOUNTS, STARTER_CATEGORIES, TRANSACTIONS_TABLE, TRANSACTION_COLUMNS, currentPlan,
+  STARTER_ACCOUNTS, STARTER_CATEGORIES, TRANSACTIONS_TABLE, TRANSACTION_COLUMNS, checkPassword, currentPlan, passwordProblem, resetMoneyRemote,
   type Account, type Category, type FixedExpense, type MoneyPlan, type Transaction, type TransactionDraft,
 } from '@dirary/shared';
 import { supabase } from '../supabase';
@@ -202,7 +202,21 @@ export function useMoney() {
     return save(() => setPlans((all) => [...all, row]), () => supabase!.from(MONEY_PLANS_TABLE).insert(row));
   }, [plans, save]);
 
+  /** Checks the password, then deletes every transaction and sets every account to ₱0. Returns a problem to show, or null when done. */
+  const resetMoney = useCallback(async (password: string): Promise<string | null> => {
+    if (!supabase) return 'Not connected.';
+    const check = await checkPassword(supabase, password);
+    if (check !== 'ok') return passwordProblem(check);
+    const stamp = now();
+    const failure = await resetMoneyRemote(supabase, stamp);
+    if (failure) { load(); return friendly(failure); }
+    setTransactions([]);
+    setAccounts((all) => all.map((a) => ({ ...a, opening_balance_centavos: 0, updated_at: stamp })));
+    return null;
+  }, [load]);
+
   return {
+    resetMoney,
     fixed, plan: currentPlan(plans), saveFixed, removeFixed, payFixed, setMonthlyBudget,
     accounts, categories, transactions, loading, error,
     addTransaction, updateTransaction, removeTransaction, linkTransfer, addTransfer, importTransactions,

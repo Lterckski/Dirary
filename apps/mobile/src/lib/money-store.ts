@@ -3,12 +3,12 @@ import * as Crypto from 'expo-crypto';
 import { useCallback, useEffect, useState } from 'react';
 import { AppState } from 'react-native';
 import {
-  ACCOUNTS_TABLE, CATEGORIES_TABLE, FIXED_EXPENSES_TABLE, MONEY_PLANS_TABLE, STARTER_ACCOUNTS, STARTER_CATEGORIES, TRANSACTIONS_TABLE, currentPlan,
+  ACCOUNTS_TABLE, CATEGORIES_TABLE, FIXED_EXPENSES_TABLE, MONEY_PLANS_TABLE, STARTER_ACCOUNTS, STARTER_CATEGORIES, TRANSACTIONS_TABLE, checkPassword, currentPlan, passwordProblem, resetMoneyRemote,
   type Account, type Category, type FixedExpense, type MoneyPlan, type Transaction, type TransactionDraft,
 } from '@dirary/shared';
 
 import { processCaptures } from './capture';
-import { readAccounts, readCategories, readFixedExpenses, readMoneyPlans, readTransactions, saveLocal } from './db';
+import { readAccounts, readCategories, readFixedExpenses, readMoneyPlans, readTransactions, resetMoneyLocal, saveLocal } from './db';
 import { supabase } from './supabase';
 import { subscribeStore, syncTasks } from './tasks-store';
 import { refreshWidgets } from '../widgets/refresh';
@@ -111,6 +111,22 @@ export async function setMonthlyBudget(monthly_budget_centavos: number | null): 
   const row: MoneyPlan = existing ? { ...existing, monthly_budget_centavos, updated_at: stamp } : { id: Crypto.randomUUID(), monthly_budget_centavos, created_at: stamp, updated_at: stamp, deleted_at: null };
   await saveLocal(MONEY_PLANS_TABLE, row);
   await changed();
+}
+
+/**
+ * Checks the password, then deletes every transaction and sets every account to ₱0, on the server first
+ * (so rows this phone hasn't pulled yet go too) and then here. Returns a problem to show, or null when done.
+ */
+export async function resetMoney(password: string): Promise<string | null> {
+  if (!supabase) return 'Not connected.';
+  const check = await checkPassword(supabase, password);
+  if (check !== 'ok') return passwordProblem(check);
+  const stamp = now();
+  const failure = await resetMoneyRemote(supabase, stamp);
+  if (failure) return /fetch|network/i.test(failure) ? "Couldn't reach the server. Nothing was reset; try again." : failure;
+  await resetMoneyLocal(stamp);
+  await changed();
+  return null;
 }
 
 /** One tap on first use: your three accounts plus Cash, and a starter set of categories. */

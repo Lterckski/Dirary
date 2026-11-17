@@ -306,3 +306,9 @@ input[type='date'].input, input[type='time'].input { cursor: pointer; }
   /* Both columns tuck their first card under the blue header, so Ink peeks over whichever sits below it. */
   .card.fixed-card { position: relative; z-index: 1; margin-top: -50px; border-radius: 28px; }
 }
+
+/* ---- Reset ---- */
+.danger-zone { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 12px; margin-top: 8px; padding-top: 16px; border-top: 1px solid var(--line); }
+.danger-zone .note { margin: 2px 0 0; }
+.btn.danger.solid { background: var(--red); border-color: var(--red); color: var(--night); }
+.btn.danger.solid:disabled { opacity: 0.45; }

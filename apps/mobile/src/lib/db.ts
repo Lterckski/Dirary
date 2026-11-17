@@ -143,6 +143,15 @@ export async function pendingCount(): Promise<number> {
   return row?.n ?? 0;
 }
 
+/** Marks every transaction deleted and every account at ₱0, ready to sync. */
+export async function resetMoneyLocal(stamp: string): Promise<void> {
+  const database = await db();
+  await database.withTransactionAsync(async () => {
+    await database.runAsync('UPDATE transactions SET deleted_at = ?, updated_at = ?, dirty = 1 WHERE deleted_at IS NULL', [stamp, stamp]);
+    await database.runAsync('UPDATE accounts SET opening_balance_centavos = 0, updated_at = ?, dirty = 1 WHERE deleted_at IS NULL', [stamp]);
+  });
+}
+
 /** Clears everything stored on this phone. Used when signing out. */
 export async function clearLocal(): Promise<void> {
   await (await db()).execAsync(`${TABLES.map((t) => `DELETE FROM ${t.name};`).join(' ')} DELETE FROM sync_meta;`);

@@ -9,7 +9,7 @@ import {
 import { Chip } from '@/components/task-bits';
 import { Field, Sheet, Wrap } from '@/components/task-editor';
 import { Button, Text, styles } from '@/components/ui';
-import { addTransaction, addTransfer, removeAccount, removeCategory, removeFixed, removeTransaction, saveAccount, saveCategory, saveFixed, setMonthlyBudget, updateTransaction } from '@/lib/money-store';
+import { addTransaction, addTransfer, removeAccount, removeCategory, removeFixed, removeTransaction, resetMoney, saveAccount, saveCategory, saveFixed, setMonthlyBudget, updateTransaction } from '@/lib/money-store';
 
 const Problem = ({ text }: { text: string | null }) => (text ? <Text variant="label" style={{ color: colors.red }} accessibilityRole="alert">{text}</Text> : null);
 const Danger = ({ label, onPress }: { label: string; onPress: () => void }) => (
@@ -130,7 +130,7 @@ export function TransferEditor({ accounts, onClose }: { accounts: Account[]; onC
   );
 }
 
-export function AccountsEditor({ accounts, onClose }: { accounts: Account[]; onClose: () => void }) {
+export function AccountsEditor({ accounts, onReset, onClose }: { accounts: Account[]; onReset: () => void; onClose: () => void }) {
   const [name, setName] = useState('');
   const [institution, setInstitution] = useState<Institution>('other');
   const [opening, setOpening] = useState('');
@@ -166,6 +166,40 @@ export function AccountsEditor({ accounts, onClose }: { accounts: Account[]; onC
         <TextInput accessibilityLabel="Opening balance in pesos" style={money} keyboardType="decimal-pad" value={opening} placeholder="0" placeholderTextColor={colors.faint} onChangeText={setOpening} />
       </Field>
       <Button primary label="Add account" disabled={!name.trim()} onPress={add} />
+      <View style={{ marginTop: space[4], paddingTop: space[4], borderTopWidth: 1, borderColor: colors.line, gap: space[2] }}>
+        <Text weight="semi">Start over from ₱0</Text>
+        <Text variant="label" muted>Deletes every transaction and sets every account to ₱0. Asks for your password first.</Text>
+        <Danger label="Reset money to ₱0" onPress={onReset} />
+      </View>
+    </Sheet>
+  );
+}
+
+export function ResetEditor({ count, onClose }: { count: number; onClose: () => void }) {
+  const [password, setPassword] = useState('');
+  const [busy, setBusy] = useState(false);
+  const [problem, setProblem] = useState<string | null>(null);
+  async function reset() {
+    if (!password || busy) return;
+    setBusy(true);
+    setProblem(null);
+    const failure = await resetMoney(password);
+    setBusy(false);
+    if (failure) { setProblem(failure); setPassword(''); return; }
+    onClose();
+  }
+  return (
+    <Sheet title="Reset money to ₱0" onClose={onClose}>
+      <Text>This deletes {count === 1 ? 'your 1 transaction' : `all ${count.toLocaleString('en-US')} transactions`}, including ones waiting to be reviewed, and sets every account's balance to ₱0. It can't be undone.</Text>
+      <Text variant="label" muted>Your accounts, categories, fixed expenses and monthly budget stay.</Text>
+      <Field label="Your password">
+        <TextInput accessibilityLabel="Your password" style={styles.input} value={password} onChangeText={setPassword} secureTextEntry autoComplete="current-password" textContentType="password" autoCapitalize="none" autoFocus onSubmitEditing={reset} />
+      </Field>
+      <Problem text={problem} />
+      <Pressable accessibilityRole="button" accessibilityState={{ disabled: !password || busy }} disabled={!password || busy} onPress={reset}
+        style={{ minHeight: 52, borderRadius: 26, alignItems: 'center', justifyContent: 'center', backgroundColor: colors.red, opacity: !password || busy ? 0.45 : 1 }}>
+        <Text weight="bold" style={{ color: colors.night }}>{busy ? 'Resetting…' : 'Reset to ₱0'}</Text>
+      </Pressable>
     </Sheet>
   );
 }

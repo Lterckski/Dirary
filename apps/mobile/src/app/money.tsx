@@ -9,7 +9,7 @@ import {
 } from '@dirary/shared';
 
 import { Mascot } from '@/components/mascot';
-import { AccountsEditor, BudgetEditor, CategoriesEditor, FixedEditor, Segmented, TransactionEditor, TransferEditor, TxRow } from '@/components/money-editor';
+import { AccountsEditor, BudgetEditor, ResetEditor, CategoriesEditor, FixedEditor, Segmented, TransactionEditor, TransferEditor, TxRow } from '@/components/money-editor';
 import { Chip, Group } from '@/components/task-bits';
 import { Button, Card, TAB_BAR_CLEARANCE, Text, styles } from '@/components/ui';
 import { useAddRequest } from '@/lib/add-bus';
@@ -25,7 +25,7 @@ const CARD_COLOR: Record<Institution, string> = { securitybank: colors.amber, go
 const LABEL = { letterSpacing: 1.4, color: colors.muted } as const;
 const NUM = { fontVariant: ['tabular-nums' as const] };
 
-type Sheet = { kind: 'tx'; tx: Transaction | null; categoryId?: string; direction?: 'in' | 'out'; accountId?: string } | { kind: 'fixed' } | { kind: 'budget' } | { kind: 'accounts' } | { kind: 'categories' } | { kind: 'transfer' } | null;
+type Sheet = { kind: 'tx'; tx: Transaction | null; categoryId?: string; direction?: 'in' | 'out'; accountId?: string } | { kind: 'fixed' } | { kind: 'budget' } | { kind: 'reset' } | { kind: 'accounts' } | { kind: 'categories' } | { kind: 'transfer' } | null;
 
 export default function MoneyScreen() {
   const { accounts, categories, transactions, fixed, plan, loading } = useMoneyStore();
@@ -307,7 +307,8 @@ export default function MoneyScreen() {
       {sheet?.kind === 'budget' && <BudgetEditor plan={plan} fixedTotal={fixedSummary.total} onClose={() => setSheet(null)} />}
       {sheet?.kind === 'tx' && <TransactionEditor tx={sheet.tx} categoryId={sheet.categoryId} direction={sheet.direction} accountId={sheet.accountId} onTransfer={accounts.length > 1 ? () => setSheet({ kind: 'transfer' }) : undefined} accounts={accounts} categories={categories} onClose={() => setSheet(null)} />}
       {sheet?.kind === 'transfer' && <TransferEditor accounts={accounts} onClose={() => setSheet(null)} />}
-      {sheet?.kind === 'accounts' && <AccountsEditor accounts={accounts} onClose={() => setSheet(null)} />}
+      {sheet?.kind === 'accounts' && <AccountsEditor accounts={accounts} onReset={() => setSheet({ kind: 'reset' })} onClose={() => setSheet(null)} />}
+      {sheet?.kind === 'reset' && <ResetEditor count={transactions.length} onClose={() => setSheet(null)} />}
       {sheet?.kind === 'categories' && <CategoriesEditor categories={categories} onClose={() => setSheet(null)} />}
     </View>
   );

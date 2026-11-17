@@ -17,7 +17,7 @@ const forInput = (d: Date) => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad
 const timeOf = (iso: string) => new Date(iso).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' });
 
 type Direction = 'in' | 'out';
-type Dialog = { kind: 'tx'; tx: Transaction | null; categoryId?: string; direction?: Direction; accountId?: string } | { kind: 'fixed' } | { kind: 'budget' } | { kind: 'accounts' } | { kind: 'categories' } | { kind: 'transfer' } | { kind: 'import' } | null;
+type Dialog = { kind: 'tx'; tx: Transaction | null; categoryId?: string; direction?: Direction; accountId?: string } | { kind: 'fixed' } | { kind: 'budget' } | { kind: 'reset' } | { kind: 'accounts' } | { kind: 'categories' } | { kind: 'transfer' } | { kind: 'import' } | null;
 
 export function Money() {
   const store = useMoney();
@@ -271,7 +271,8 @@ export function Money() {
       {dialog?.kind === 'tx' && <TxDialog tx={dialog.tx} categoryId={dialog.categoryId} direction={dialog.direction} accountId={dialog.accountId} store={store} onTransfer={accounts.length > 1 ? () => setDialog({ kind: 'transfer' }) : undefined} onClose={() => setDialog(null)} />}
       {dialog?.kind === 'fixed' && <FixedDialog store={store} onClose={() => setDialog(null)} />}
       {dialog?.kind === 'budget' && <BudgetDialog store={store} fixedTotal={fixedSummary.total} onClose={() => setDialog(null)} />}
-      {dialog?.kind === 'accounts' && <AccountsDialog store={store} onClose={() => setDialog(null)} />}
+      {dialog?.kind === 'accounts' && <AccountsDialog store={store} onReset={() => setDialog({ kind: 'reset' })} onClose={() => setDialog(null)} />}
+      {dialog?.kind === 'reset' && <ResetDialog store={store} onClose={() => setDialog(null)} />}
       {dialog?.kind === 'categories' && <CategoriesDialog store={store} onClose={() => setDialog(null)} />}
       {dialog?.kind === 'transfer' && <TransferDialog store={store} onClose={() => setDialog(null)} />}
       {dialog?.kind === 'import' && <ImportDialog store={store} onClose={() => setDialog(null)} />}
@@ -417,7 +418,7 @@ function TxDialog({ tx, categoryId: startCategory, direction: startDirection, ac
   );
 }
 
-function AccountsDialog({ store, onClose }: { store: MoneyStore; onClose: () => void }) {
+function AccountsDialog({ store, onReset, onClose }: { store: MoneyStore; onReset: () => void; onClose: () => void }) {
   const [name, setName] = useState('');
   const [institution, setInstitution] = useState<Institution>('other');
   const [opening, setOpening] = useState('');
@@ -456,6 +457,47 @@ function AccountsDialog({ store, onClose }: { store: MoneyStore; onClose: () => 
           <input className="input" inputMode="decimal" value={opening} placeholder="0" onChange={(e) => setOpening(e.target.value)} />
         </label>
         <div className="actions"><span className="grow" /><button type="button" className="btn" onClick={onClose}>Done</button><button type="submit" className="btn primary" disabled={!name.trim()}>Add account</button></div>
+      </form>
+      <div className="danger-zone">
+        <div>
+          <strong>Start over from ₱0</strong>
+          <p className="note muted">Deletes every transaction and sets every account to ₱0. Asks for your password first.</p>
+        </div>
+        <button type="button" className="btn danger" onClick={onReset}>Reset money to ₱0</button>
+      </div>
+    </Modal>
+  );
+}
+
+function ResetDialog({ store, onClose }: { store: MoneyStore; onClose: () => void }) {
+  const [password, setPassword] = useState('');
+  const [busy, setBusy] = useState(false);
+  const [problem, setProblem] = useState<string | null>(null);
+  const count = store.transactions.length;
+  async function submit(event: FormEvent) {
+    event.preventDefault();
+    if (!password || busy) return;
+    setBusy(true);
+    setProblem(null);
+    const failure = await store.resetMoney(password);
+    setBusy(false);
+    if (failure) { setProblem(failure); setPassword(''); return; }
+    onClose();
+  }
+  return (
+    <Modal title="Reset money to ₱0" onClose={onClose}>
+      <form className="form" onSubmit={submit}>
+        <p>This deletes {count === 1 ? 'your 1 transaction' : `all ${count.toLocaleString('en-US')} transactions`}, including ones waiting to be reviewed, and sets every account's balance to ₱0. It can't be undone.</p>
+        <p className="note muted">Your accounts, categories, fixed expenses and monthly budget stay.</p>
+        <label className="field">Your password
+          <input className="input" type="password" autoComplete="current-password" value={password} onChange={(e) => setPassword(e.target.value)} data-autofocus />
+        </label>
+        {problem && <p className="note error" role="alert">{problem}</p>}
+        <div className="actions">
+          <span className="grow" />
+          <button type="button" className="btn" onClick={onClose}>Cancel</button>
+          <button type="submit" className="btn danger solid" disabled={!password || busy}>{busy ? 'Resetting…' : 'Reset to ₱0'}</button>
+        </div>
       </form>
     </Modal>
   );
