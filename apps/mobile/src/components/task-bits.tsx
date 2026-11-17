@@ -4,6 +4,10 @@ import { Path, Svg } from 'react-native-svg';
 import { colors, radius, space, type ColorToken } from '@dirary/ui';
 import { PRIORITY_LABEL, RECURRENCE_LABEL, asRecurrence, dayLabel, fromNow, timeLabel, type List, type Task } from '@dirary/shared';
 
+import Animated, { Easing, ReduceMotion, ZoomIn } from 'react-native-reanimated';
+
+/** The one easing curve used for motion across the app. */
+export const EASE_OUT = Easing.bezier(0.23, 1, 0.32, 1);
 import { Text } from '@/components/ui';
 
 const URGENCY_COLOR: Record<number, string> = { 0: colors.inkBlue, 1: colors.inkBlue, 2: colors.amber, 3: colors.red };
@@ -48,10 +52,11 @@ function Pill({ label, color, outlined }: { label: string; color: string; outlin
   );
 }
 
-export function TaskRow({ task, list, today, showDay, onToggle, onOpen }: {
-  task: Task; list: List | undefined; today: string; showDay: boolean; onToggle: (t: Task) => void; onOpen: (t: Task) => void;
+export function TaskRow({ task, list, today, showDay, ticked, onToggle, onOpen }: {
+  task: Task; list: List | undefined; today: string; showDay: boolean; ticked?: boolean; onToggle: (t: Task) => void; onOpen: (t: Task) => void;
 }) {
-  const done = task.status === 'done';
+  // `ticked`: just checked and about to fold away. It looks done, and a second tap cancels.
+  const done = task.status === 'done' || !!ticked;
   const repeat = asRecurrence(task.recurrence_rule);
   const meta = [list?.name, repeat ? RECURRENCE_LABEL[repeat] : null, task.remind_at ? 'Reminder set' : null].filter(Boolean).join(' · ');
   const when = [showDay && task.due_date ? dayLabel(task.due_date, today) : null, task.due_time ? timeLabel(task.due_time) : null].filter(Boolean).join(', ');
@@ -71,13 +76,15 @@ export function TaskRow({ task, list, today, showDay, onToggle, onOpen }: {
         style={{ width: 48, height: 48, alignItems: 'center', justifyContent: 'center' }}>
         <View style={{ width: 26, height: 26, borderRadius: radius.sm, borderWidth: 2.5, borderColor: done ? colors.inkBlue : edge, backgroundColor: done ? colors.inkBlue : 'transparent', alignItems: 'center', justifyContent: 'center' }}>
           {done && (
-            <Svg width={16} height={16} viewBox="0 0 16 16">
-              <Path d="M3 8.5 6.5 12 13 4.5" fill="none" stroke={colors.onInkBlue} strokeWidth={2.6} strokeLinecap="round" strokeLinejoin="round" />
-            </Svg>
+            <Animated.View entering={ticked ? ZoomIn.duration(180).easing(EASE_OUT).reduceMotion(ReduceMotion.System) : undefined}>
+              <Svg width={16} height={16} viewBox="0 0 16 16">
+                <Path d="M3 8.5 6.5 12 13 4.5" fill="none" stroke={colors.onInkBlue} strokeWidth={2.6} strokeLinecap="round" strokeLinejoin="round" />
+              </Svg>
+            </Animated.View>
           )}
         </View>
       </Pressable>
-      <Pressable accessibilityRole="button" accessibilityLabel={`Edit ${task.title}`} onPress={() => onOpen(task)} style={{ flex: 1, minHeight: 48, justifyContent: 'center', paddingVertical: 6, gap: 4 }}>
+      <Pressable accessibilityRole="button" accessibilityLabel={`Edit ${task.title}`} onPress={() => onOpen(task)} style={({ pressed }) => ({ flex: 1, minHeight: 48, justifyContent: 'center', paddingVertical: 6, gap: 4, opacity: pressed ? 0.6 : 1 })}>
         <Text weight={done ? 'medium' : 'semi'} style={done ? { color: colors.faint, textDecorationLine: 'line-through' } : undefined}>{task.title}</Text>
         {done ? !!list && <Text variant="label" style={{ color: colors.faint }}>{list.name}</Text> : !!meta && <Text variant="label" muted>{meta}</Text>}
         {!done && (task.priority > 0 || !!due) && (

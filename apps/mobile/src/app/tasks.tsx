@@ -2,6 +2,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as Haptics from 'expo-haptics';
 import { useLocalSearchParams } from 'expo-router';
 import { useEffect, useMemo, useRef, useState, type ComponentRef } from 'react';
+import Animated, { FadeInDown, FadeOut, LinearTransition, ReduceMotion, useAnimatedStyle, useSharedValue, withSequence, withSpring, withTiming } from 'react-native-reanimated';
 import { Pressable, ScrollView, TextInput, View } from 'react-native';
 import { colors, radius, space } from '@dirary/ui';
 import {
@@ -10,7 +11,8 @@ import {
 } from '@dirary/shared';
 
 import { Mascot } from '@/components/mascot';
-import { Chip, Group, Segmented, TaskRow } from '@/components/task-bits';
+import { Confetti } from '@/components/confetti';
+import { Chip, EASE_OUT, Group, Segmented, TaskRow } from '@/components/task-bits';
 import { ListsEditor, TaskEditor } from '@/components/task-editor';
 import { Button, Card, Text, styles } from '@/components/ui';
 import { requestReminderPermission } from '@/lib/reminders';
@@ -20,6 +22,12 @@ import { useAddRequest } from '@/lib/add-bus';
 type View_ = 'today' | 'upcoming' | 'inbox' | 'done' | string; // any other string is a list id
 const FIXED_VIEWS = ['today', 'upcoming', 'inbox', 'done'];
 const toLocal = (iso: string) => localDate(new Date(iso));
+
+/** How long a ticked task stays visible, checked, before it folds away. */
+const CHECKED_MS = 340;
+const ENTER = FadeInDown.duration(200).easing(EASE_OUT).withInitialValues({ transform: [{ translateY: -6 }] }).reduceMotion(ReduceMotion.System);
+const LEAVE = FadeOut.duration(160).reduceMotion(ReduceMotion.System);
+const MOVE = LinearTransition.duration(220).easing(EASE_OUT).reduceMotion(ReduceMotion.System);
 
 export default function TasksScreen() {
   const { tasks, lists, loading, message } = useTasksStore();
@@ -92,18 +100,95 @@ export default function TasksScreen() {
     await addTask(draft.data);
   }
 
+  // Ticking a task: it shows as checked for a moment, then folds away as it is saved as done.
+  // Ticking it again during that moment cancels. Leaving the screen saves anything still waiting.
+  const [ticked, setTicked] = useState<Set<string>>(new Set());
+  const waiting = useRef(new Map<string, { task: Task; timer: ReturnType<typeof setTimeout> }>());
+  const lastDone = useRef(0);
+  const untick = (id: string) => setTicked((cur) => { const next = new Set(cur); next.delete(id); return next; });
+  useEffect(() => () => {
+    for (const { task, timer } of waiting.current.values()) { clearTimeout(timer); toggleTask(task); }
+    waiting.current.clear();
+  }, []);
+  // Saving is asynchronous here, so a row stays "ticked" until the saved change reaches the list; that way
+  // it never flashes back to unchecked, and it still carries its fold-away animation as it leaves.
+  useEffect(() => {
+    setTicked((cur) => {
+      const keep = [...cur].filter((id) => waiting.current.has(id));
+      return keep.length === cur.size ? cur : new Set(keep);
+    });
+  }, [tasks]);
+
   function toggle(task: Task) {
-    if (task.status !== 'done') {
-      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-      setJustCompleted(true);
-      setTimeout(() => setJustCompleted(false), 2500);
+    if (task.status === 'done') return toggleTask(task);
+    const pending = waiting.current.get(task.id);
+    if (pending) {
+      clearTimeout(pending.timer);
+      waiting.current.delete(task.id);
+      untick(task.id);
+      return;
     }
-    toggleTask(task);
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    setJustCompleted(true);
+    setTimeout(() => setJustCompleted(false), 2500);
+    setTicked((cur) => new Set(cur).add(task.id));
+    const timer = setTimeout(() => {
+      waiting.current.delete(task.id);
+      lastDone.current = Date.now();
+      toggleTask(task);
+    }, CHECKED_MS);
+    waiting.current.set(task.id, { task, timer });
   }
 
-  const row = (task: Task, showDay: boolean) => (
-    <TaskRow key={task.id} task={task} list={task.list_id ? listById.get(task.list_id) : undefined} today={today} showDay={showDay} onToggle={toggle} onOpen={setEditing} />
-  );
+  // New tasks (from the box or another device) slide in; the ones there on open don't.
+  const known = useRef<Set<string> | null>(null);
+  const fresh = useRef(new Set<string>());
+  if (!loading) {
+    if (!known.current) known.current = new Set(tasks.map((t) => t.id));
+    for (const t of tasks) {
+      if (known.current.has(t.id)) continue;
+      known.current.add(t.id);
+      fresh.current.add(t.id);
+      setTimeout(() => fresh.current.delete(t.id), 800);
+    }
+  }
+
+  // Finishing the last task due today: confetti out of the progress bar, a bigger buzz, the bar pops.
+  const screenRef = useRef<ComponentRef<typeof View>>(null);
+  const barRef = useRef<ComponentRef<typeof View>>(null);
+  const [shot, setShot] = useState(0);
+  const [origin, setOrigin] = useState<{ x: number; y: number; width: number } | null>(null);
+  const barPop = useSharedValue(1);
+  const barStyle = useAnimatedStyle(() => ({ transform: [{ scaleY: barPop.value }] }));
+  const remaining = todayData.overdue.length + todayData.dueToday.length;
+  const before = useRef(remaining);
+  useEffect(() => {
+    const was = before.current;
+    before.current = remaining;
+    if (!(was > 0 && remaining === 0 && todayData.total > 0 && Date.now() - lastDone.current < 2000)) return;
+    Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
+    barPop.value = withSequence(withTiming(1.8, { duration: 140, easing: EASE_OUT, reduceMotion: ReduceMotion.System }), withSpring(1, { damping: 8, stiffness: 260, reduceMotion: ReduceMotion.System }));
+    screenRef.current?.measureInWindow((sx, sy) => {
+      barRef.current?.measureInWindow((bx, by, bw, bh) => {
+        setOrigin({ x: bx - sx + bw / 2, y: by - sy + bh / 2, width: bw });
+        setShot((n) => n + 1);
+      });
+    });
+  }, [remaining, todayData.total, barPop]);
+
+  const row = (task: Task, showDay: boolean) => {
+    const isTicked = ticked.has(task.id);
+    return (
+      // The row folds away when it leaves (only after a tick, never on a view switch); the rows below glide up into its place.
+      <Animated.View
+        key={task.id}
+        layout={MOVE}
+        entering={fresh.current.has(task.id) ? ENTER : undefined}
+        exiting={isTicked ? LEAVE : undefined}>
+        <TaskRow task={task} list={task.list_id ? listById.get(task.list_id) : undefined} today={today} showDay={showDay} ticked={isTicked} onToggle={toggle} onOpen={setEditing} />
+      </Animated.View>
+    );
+  };
   const empty = (line: string) => (
     <Card style={{ alignItems: 'center', paddingVertical: space[8] }}>
       <Mascot mood="sleepy" size={128} />
@@ -125,11 +210,12 @@ export default function TasksScreen() {
             </Text>
             <Text weight="bold" style={{ color: colors.inkBlue, fontVariant: ['tabular-nums'] }}>{percent}%</Text>
           </View>
-          <View
+          <Animated.View
+            ref={barRef}
             accessibilityRole="progressbar" accessibilityLabel="Tasks done today" accessibilityValue={{ min: 0, max: 100, now: percent }}
-            style={{ height: 12, borderRadius: radius.pill, backgroundColor: colors.line, overflow: 'hidden' }}>
+            style={[{ height: 12, borderRadius: radius.pill, backgroundColor: colors.line, overflow: 'hidden' }, barStyle]}>
             <View style={{ width: `${percent}%`, height: 12, borderRadius: radius.pill, backgroundColor: colors.inkBlue }} />
-          </View>
+          </Animated.View>
           <View style={styles.row}>
             <View style={{ width: 60, height: 60, borderRadius: 30, backgroundColor: colors.inkBlue, alignItems: 'center', justifyContent: 'center' }}>
               <Mascot mood={coach.mood} size={52} />
@@ -175,7 +261,7 @@ export default function TasksScreen() {
   }
 
   return (
-    <View style={styles.screen}>
+    <View ref={screenRef} style={styles.screen}>
       <ScrollView contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
         <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: space[2] }} style={{ marginHorizontal: -space[5] }}>
           <View style={{ width: space[5] - space[2] }} />
@@ -226,6 +312,7 @@ export default function TasksScreen() {
           onAdd={(name, color) => addList(name, color, lists.length)} onRename={renameList} onDelete={removeList}
         />
       )}
+      <Confetti shot={shot} origin={origin} />
     </View>
   );
 }

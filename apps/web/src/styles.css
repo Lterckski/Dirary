@@ -337,3 +337,51 @@ input[type='date'].input, input[type='time'].input { cursor: pointer; }
 .stash-bar { grid-column: 1 / -1; }
 .stash-actions { grid-column: 1 / -1; display: flex; gap: 8px; }
 .note.warn { color: var(--amber); }
+
+/* ---- Motion: one easing curve for everything ---- */
+:root { --ease-out: cubic-bezier(0.23, 1, 0.32, 1); }
+
+/* The tick draws itself in when a task is checked. */
+.check svg path { stroke-dasharray: 1; stroke-dashoffset: 1; }
+.check[aria-checked='true'] svg path { stroke-dashoffset: 0; }
+
+/* A ticked task folds shut (its height is pinned in JS first), eating the gap below it. */
+.task.folding { height: 0 !important; padding-top: 0; padding-bottom: 0; border-width: 0; margin-bottom: -8px; opacity: 0; overflow: hidden; }
+.task.ticked .task-title { color: var(--faint); text-decoration: line-through; }
+
+@keyframes task-in { from { opacity: 0; transform: translateY(-4px); } }
+@keyframes ink-hop {
+  0% { transform: none; }
+  30% { transform: translateY(-14px) rotate(-6deg); }
+  55% { transform: translateY(0) scale(1.06, 0.92); }
+  75% { transform: translateY(-5px) rotate(3deg); }
+  100% { transform: none; }
+}
+@keyframes bar-glow {
+  0% { box-shadow: 0 0 0 0 color-mix(in srgb, var(--inkBlue) 70%, transparent); }
+  100% { box-shadow: 0 0 0 12px transparent; }
+}
+@keyframes line-pop { 0% { transform: scale(0.96); opacity: 0.4; } 100% { transform: none; opacity: 1; } }
+
+@media (prefers-reduced-motion: no-preference) {
+  .check svg path { transition: stroke-dashoffset 180ms var(--ease-out) 40ms; }
+  .task.folding { transition: height 220ms var(--ease-out), padding 220ms var(--ease-out), margin 220ms var(--ease-out), border-width 220ms var(--ease-out), opacity 150ms ease-out; }
+  .task.ticked .task-title { transition: color 150ms ease-out; }
+  .task.fresh { animation: task-in 200ms var(--ease-out); }
+  .progress.party .coach-badge { animation: ink-hop 650ms var(--ease-out); }
+  .progress.party .bar { animation: bar-glow 800ms ease-out; }
+  .progress.party .coach p { animation: line-pop 400ms var(--ease-out); transform-origin: left center; }
+
+  /* Windows grow in from just below full size; the backdrop fades. Closing stays instant. */
+  .modal[open] { transition: opacity 200ms var(--ease-out), transform 200ms var(--ease-out); }
+  .modal[open]::backdrop { transition: opacity 200ms ease-out; }
+  @starting-style {
+    .modal[open] { opacity: 0; transform: scale(0.97); }
+    .modal[open]::backdrop { opacity: 0; }
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .task.folding { display: none; }
+  .modal[open] { transition: opacity 150ms ease-out; }
+  @starting-style { .modal[open] { opacity: 0; } }
+}
