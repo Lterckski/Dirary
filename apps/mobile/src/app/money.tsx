@@ -1,3 +1,4 @@
+import { useLocalSearchParams } from 'expo-router';
 import { useEffect, useMemo, useRef, useState, type ComponentRef } from 'react';
 import * as Haptics from 'expo-haptics';
 import Animated, { ReduceMotion, ZoomIn } from 'react-native-reanimated';
@@ -6,6 +7,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Path, Svg } from 'react-native-svg';
 import { colors, radius, space } from '@dirary/ui';
 import {
+  isFoodSpend,
   accountBalance, budgetCoach, dayLabel, endOfDayBalances, stashProgress, stashSummary, dueLabel, findTransferPairs, fixedThisMonth, formatPeso, formatPesoShort, monthName, monthlyRecap, recapLine, localDate, monthSummary, needsReview, parseMoneyQuickAdd, recentTransactions, safeToSpend, spendCoach,
   type Institution, type MonthRecap, type Stash, type Transaction,
 } from '@dirary/shared';
@@ -18,6 +20,7 @@ import { AccountsEditor, BudgetEditor, ResetEditor, StashEditor, StashMoveEditor
 import { Chip, Group } from '@/components/task-bits';
 import { Button, Card, TAB_BAR_CLEARANCE, Text, styles } from '@/components/ui';
 import { useAddRequest } from '@/lib/add-bus';
+import { router } from 'expo-router';
 import { addStarterSet, addTransaction, linkTransfer, logCaptured, payFixed, removeTransaction, updateTransaction, useMoneyStore } from '@/lib/money-store';
 import { Sheet } from '@/components/task-editor';
 import { captureAvailable, captureCount, clearCaptures, getCaptures, isCaptureEnabled, openCaptureSettings, type Capture } from '../../modules/dirary-capture';
@@ -36,6 +39,25 @@ export default function MoneyScreen() {
   const { accounts, categories, transactions, fixed, plan, stashes, loading } = useMoneyStore();
   const insets = useSafeAreaInsets();
   const [sheet, setSheet] = useState<Sheet>(null);
+
+  // After you log food spending, a chip offers to log what you ate. Never a pop-up: it goes away on its own.
+  const [ate, setAte] = useState<{ query: string } | null>(null);
+  const seenTx = useRef<Set<string> | null>(null);
+  useEffect(() => {
+    if (loading) return;
+    if (!seenTx.current) { seenTx.current = new Set(transactions.map((t) => t.id)); return; }
+    for (const t of transactions) {
+      if (seenTx.current.has(t.id)) continue;
+      seenTx.current.add(t.id);
+      const justNow = Date.now() - new Date(t.created_at).getTime() < 120_000;
+      if (justNow && isFoodSpend(t, categories)) setAte({ query: (t.merchant ?? '').trim() });
+    }
+  }, [transactions, categories, loading]);
+  useEffect(() => {
+    if (!ate) return;
+    const timer = setTimeout(() => setAte(null), 10000);
+    return () => clearTimeout(timer);
+  }, [ate]);
   const [text, setText] = useState('');
   const [mode, setMode] = useState<'in' | 'out'>('out');
   const today = localDate();
@@ -121,6 +143,9 @@ export default function MoneyScreen() {
 
   // The floating + button opens the add form.
   useAddRequest('money', () => setSheet({ kind: 'tx', tx: null }));
+  // The Day widget's "Expense" button opens the app with ?add=1.
+  const params = useLocalSearchParams<{ add?: string }>();
+  useEffect(() => { if (params.add) setSheet({ kind: 'tx', tx: null }); }, [params.add]);
   const inbox = useMemo(() => needsReview(transactions), [transactions]);
   const pairs = useMemo(() => findTransferPairs(inbox), [inbox]);
   const paired = new Set(pairs.flatMap((p) => [p.out.id, p.into.id]));
@@ -468,6 +493,20 @@ export default function MoneyScreen() {
       {sheet?.kind === 'stash' && <StashEditor stash={sheet.stash} accounts={accounts} count={stashes.length} startAccount={shown?.id} onClose={() => setSheet(null)} />}
       {sheet?.kind === 'stashMove' && <StashMoveEditor stash={sheet.stash} mode={sheet.mode} free={stash.byAccount.get(sheet.stash.account_id)?.free ?? 0} accountName={accountById.get(sheet.stash.account_id)?.name ?? 'the account'} onClose={() => setSheet(null)} />}
       {sheet?.kind === 'categories' && <CategoriesEditor categories={categories} onClose={() => setSheet(null)} />}
+      {ate && (
+        <Animated.View entering={ENTER} exiting={LEAVE} accessibilityLiveRegion="polite"
+          style={{ position: 'absolute', left: space[4], right: space[4], bottom: insets.bottom + 100, flexDirection: 'row', alignItems: 'center', gap: space[3],
+            paddingLeft: space[5], paddingRight: space[2], paddingVertical: space[2], borderRadius: radius.pill, borderWidth: 1, borderColor: colors.line, backgroundColor: colors.raised }}>
+          <Text variant="label" numberOfLines={1} style={{ flex: 1 }}>Log what you ate{ate.query ? ` at ${ate.query}` : ''}?</Text>
+          <Pressable accessibilityRole="button" onPress={() => { const q = ate.query; setAte(null); router.navigate({ pathname: '/health', params: { log: String(Date.now()), q } }); }}
+            style={({ pressed }) => ({ minHeight: 40, paddingHorizontal: space[4], borderRadius: radius.pill, backgroundColor: colors.inkBlue, justifyContent: 'center', opacity: pressed ? 0.7 : 1 })}>
+            <Text variant="label" weight="bold" style={{ color: colors.onInkBlue }}>Log food</Text>
+          </Pressable>
+          <Pressable accessibilityRole="button" accessibilityLabel="Not now" onPress={() => setAte(null)} hitSlop={4} style={{ width: 40, height: 40, alignItems: 'center', justifyContent: 'center' }}>
+            <Text weight="semi" muted>✕</Text>
+          </Pressable>
+        </Animated.View>
+      )}
       <Confetti shot={party.shot} origin={party.origin} amount={party.amount} />
     </View>
   );

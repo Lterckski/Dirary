@@ -26,13 +26,15 @@ function fnv(text: string, seed: number): string {
   return h.toString(16).padStart(8, '0');
 }
 
-/** The id of the task for one bill in one month ("YYYY-MM"). The same on every device. A version-8 UUID. */
-export function billTaskId(expenseId: string, month: string): string {
-  const key = `dirary-bill:${expenseId}:${month}`;
+/** A version-8 UUID that is always the same for the same key, so every device makes the same row. */
+export function stableUuid(key: string): string {
   const hex = [0, 1, 2, 3].map((seed) => fnv(key, seed * 0x9e3779b9)).join('');
   const variant = ((parseInt(hex[16]!, 16) & 0x3) | 0x8).toString(16);
   return `${hex.slice(0, 8)}-${hex.slice(8, 12)}-8${hex.slice(13, 16)}-${variant}${hex.slice(17, 20)}-${hex.slice(20, 32)}`;
 }
+
+/** The id of the task for one bill in one month ("YYYY-MM"). The same on every device. */
+export const billTaskId = (expenseId: string, month: string): string => stableUuid(`dirary-bill:${expenseId}:${month}`);
 
 /** "Pay Meralco · ₱2,340" */
 export function billTitle(expense: Pick<FixedExpense, 'name' | 'amount_centavos'>): string {
@@ -151,4 +153,21 @@ export function amountInTask(title: string): number | null {
 /** The title without the amount, for the transaction's note: "Buy dog food ₱450" → "Buy dog food". */
 export function taskWithoutAmount(title: string): string {
   return title.replace(AMOUNT, '').replace(/\s{2,}/g, ' ').replace(/\s+([,.;:])/g, '$1').trim() || title;
+}
+
+// ---- spending and the food log ----
+
+const FOOD_CATEGORY = /\b(food|foods|groceries|grocery|dining|eating out|restaurants?|meals?|snacks?|drinks?|coffee)\b/i;
+
+/** Money spent on food: confirmed, going out, in a category named like food ("Food", "Groceries", "Dining"). */
+export function isFoodSpend(tx: Pick<Transaction, 'direction' | 'status' | 'category_id' | 'transfer_group_id' | 'deleted_at'>, categories: readonly { id: string; name: string }[]): boolean {
+  if (tx.deleted_at !== null || tx.direction !== 'out' || tx.status !== 'confirmed' || tx.transfer_group_id !== null || !tx.category_id) return false;
+  const category = categories.find((c) => c.id === tx.category_id);
+  return !!category && FOOD_CATEGORY.test(category.name);
+}
+
+/** The category a meal's price goes under: one named "Food" first, else any food-like expense category. */
+export function foodCategoryId(categories: readonly { id: string; name: string; kind: string; deleted_at?: string | null }[]): string | null {
+  const live = categories.filter((c) => c.kind === 'expense' && !c.deleted_at);
+  return (live.find((c) => c.name.trim().toLowerCase() === 'food') ?? live.find((c) => FOOD_CATEGORY.test(c.name)))?.id ?? null;
 }

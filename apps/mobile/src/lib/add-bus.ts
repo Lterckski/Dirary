@@ -1,7 +1,7 @@
 /** The floating + button asks a screen to start adding. The request waits if that screen hasn't opened yet. */
 import { useEffect, useRef } from 'react';
 
-export type AddTarget = 'tasks' | 'money';
+export type AddTarget = 'tasks' | 'money' | 'health';
 let pending: AddTarget | null = null;
 const listeners = new Set<(target: AddTarget) => void>();
 

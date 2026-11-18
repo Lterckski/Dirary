@@ -5,6 +5,7 @@ import { AppState } from 'react-native';
 import { LISTS_TABLE, TASKS_TABLE, completeTask, localDate, reopenTask, type List, type ListColor, type Task, type TaskDraft } from '@dirary/shared';
 
 import { reconcileBillTasks, toggleBillTask } from './bill-tasks';
+import { reconcileWorkoutTasks, toggleWorkoutTask } from './workout-tasks';
 import { clearLocal, getMeta, pendingCount, readLists, readTasks, saveLocal, syncAll } from './db';
 import { refreshReminders } from './reminders';
 import { supabase } from './supabase';
@@ -45,12 +46,13 @@ export async function syncTasks(): Promise<void> {
   // Bills become tasks even offline, once this phone has pulled at least once (so it knows which bill
   // tasks the web already made or you deleted). After a pull, payments made elsewhere tick their tasks here.
   const pulledBefore = (await getMeta(`cursor_${TASKS_TABLE}`)) !== null;
-  let changedHere = pulledBefore ? await reconcileBillTasks().catch(() => 0) : 0;
+  const reconcile = async () => (await reconcileBillTasks().catch(() => 0)) + (await reconcileWorkoutTasks().catch(() => 0));
+  let changedHere = pulledBefore ? await reconcile() : 0;
   let pulled = 0;
   if (supabase) {
     try {
       pulled = (await syncAll(supabase)).pulled;
-      const more = await reconcileBillTasks().catch(() => 0);
+      const more = await reconcile();
       if (more > 0) await syncAll(supabase);
       changedHere += more;
       syncMessage = '';
@@ -81,7 +83,7 @@ export async function updateTask(task: Task, patch: Partial<Task>): Promise<void
 
 /** Ticking a repeating task also creates its next occurrence. Ticking a bill logs its payment in Money. */
 export async function toggleTask(task: Task): Promise<void> {
-  if (await toggleBillTask(task)) {
+  if ((await toggleBillTask(task)) || (await toggleWorkoutTask(task))) {
     // handled
   } else if (task.status === 'done') {
     await saveLocal(TASKS_TABLE, { ...task, ...reopenTask(now()) });

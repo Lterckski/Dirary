@@ -91,3 +91,25 @@ describe('amountInTask', () => {
     expect(taskWithoutAmount('pay tuition PHP 12,500 tomorrow')).toBe('pay tuition tomorrow');
   });
 });
+
+describe('spending and the food log', async () => {
+  const { isFoodSpend, foodCategoryId } = await import('./links');
+  const cats = [
+    { id: 'c1', name: 'Transport', kind: 'expense' },
+    { id: 'c2', name: 'Groceries', kind: 'expense' },
+    { id: 'c3', name: 'Food', kind: 'expense' },
+    { id: 'c4', name: 'Allowance', kind: 'income' },
+  ];
+  it('spots food spending', () => {
+    expect(isFoodSpend(tx({ category_id: 'c3' }), cats)).toBe(true);
+    expect(isFoodSpend(tx({ category_id: 'c2' }), cats)).toBe(true);
+    expect(isFoodSpend(tx({ category_id: 'c1' }), cats)).toBe(false);
+    expect(isFoodSpend(tx({ category_id: 'c3', direction: 'in' }), cats)).toBe(false);
+    expect(isFoodSpend(tx({ category_id: 'c3', status: 'needs_review' }), cats)).toBe(false);
+  });
+  it('files a meal under Food first', () => {
+    expect(foodCategoryId(cats)).toBe('c3');
+    expect(foodCategoryId(cats.filter((c) => c.id !== 'c3'))).toBe('c2');
+    expect(foodCategoryId([cats[0]!])).toBeNull();
+  });
+});

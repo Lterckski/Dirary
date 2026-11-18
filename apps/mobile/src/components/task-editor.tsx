@@ -1,5 +1,5 @@
 import { useState, type ReactNode } from 'react';
-import { Modal, Pressable, ScrollView, TextInput, View } from 'react-native';
+import { Pressable, ScrollView, TextInput, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { colors, space } from '@dirary/ui';
 import {
@@ -8,21 +8,23 @@ import {
 } from '@dirary/shared';
 
 import { DatePickerSheet, TimePickerSheet } from '@/components/pickers';
+import { PopUp } from '@/components/pop-up';
 import { Chip } from '@/components/task-bits';
 import { Button, Text, styles } from '@/components/ui';
 
 
 export function Sheet({ title, onClose, children }: { title: string; onClose: () => void; children: ReactNode }) {
   return (
-    <Modal visible animationType="slide" onRequestClose={onClose} statusBarTranslucent>
-      <SafeAreaView style={styles.screen}>
-        <View style={[styles.row, { justifyContent: 'space-between', paddingHorizontal: space[5], paddingTop: space[4] }]}>
-          <Text variant="heading">{title}</Text>
+    <PopUp card onClose={onClose}>
+      <SafeAreaView edges={['bottom']} style={styles.screen}>
+        <View style={{ alignSelf: 'center', width: 40, height: 4, borderRadius: 2, marginTop: space[2], backgroundColor: colors.line }} />
+        <View style={[styles.row, { justifyContent: 'space-between', paddingHorizontal: space[5], paddingTop: space[3] }]}>
+          <Text variant="heading" accessibilityRole="header">{title}</Text>
           <Button label="Close" onPress={onClose} />
         </View>
         <ScrollView contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">{children}</ScrollView>
       </SafeAreaView>
-    </Modal>
+    </PopUp>
   );
 }
 
