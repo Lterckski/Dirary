@@ -7,7 +7,7 @@ import {
 } from '@dirary/shared';
 
 import { readFoodLogs, readFoods, readHealthGoals, readWater, saveLocal } from './db';
-import { supabase } from './supabase';
+import { watchTables } from './realtime';
 import { subscribeStore, syncTasks } from './tasks-store';
 import { refreshWidgets } from '../widgets/refresh';
 
@@ -129,16 +129,11 @@ export function useHealthStore() {
     listeners.add(load);
     const unsubscribe = subscribeStore(load); // the shared sync announces remote changes through the tasks store
     load().then(() => syncTasks());
-    const client = supabase;
-    let channel = client?.channel('health_phone');
-    if (channel) {
-      for (const table of [FOODS_TABLE, FOOD_LOGS_TABLE, HEALTH_GOALS_TABLE, WATER_LOGS_TABLE]) channel = channel.on('postgres_changes', { event: '*', schema: 'public', table }, () => { syncTasks(); });
-      channel.subscribe();
-    }
+    const unwatch = watchTables('health_phone', [FOODS_TABLE, FOOD_LOGS_TABLE, HEALTH_GOALS_TABLE, WATER_LOGS_TABLE], () => { syncTasks(); });
     return () => {
       listeners.delete(load);
       unsubscribe();
-      if (client && channel) client.removeChannel(channel);
+      unwatch();
     };
   }, [load]);
 

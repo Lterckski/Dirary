@@ -10,6 +10,7 @@ import {
 import { processCaptures } from './capture';
 import { readAccounts, readCategories, readFixedExpenses, readMoneyPlans, readStashes, readTasks, readTransactions, resetMoneyLocal, saveLocal } from './db';
 import { supabase } from './supabase';
+import { watchTables } from './realtime';
 import { subscribeStore, syncTasks } from './tasks-store';
 import { refreshWidgets } from '../widgets/refresh';
 
@@ -195,17 +196,12 @@ export function useMoneyStore() {
     const unsubscribe = subscribeStore(load);
     load().then(() => logCaptured()).then(() => syncTasks());
     const appState = AppState.addEventListener('change', (state) => { if (state === 'active') logCaptured(); });
-    const client = supabase;
-    let channel = client?.channel('money_phone');
-    if (channel) {
-      for (const table of [ACCOUNTS_TABLE, CATEGORIES_TABLE, TRANSACTIONS_TABLE, FIXED_EXPENSES_TABLE, MONEY_PLANS_TABLE, STASHES_TABLE]) channel = channel.on('postgres_changes', { event: '*', schema: 'public', table }, () => { syncTasks(); });
-      channel.subscribe();
-    }
+    const unwatch = watchTables('money_phone', [ACCOUNTS_TABLE, CATEGORIES_TABLE, TRANSACTIONS_TABLE, FIXED_EXPENSES_TABLE, MONEY_PLANS_TABLE, STASHES_TABLE], () => { syncTasks(); });
     return () => {
       listeners.delete(load);
       unsubscribe();
       appState.remove();
-      if (client && channel) client.removeChannel(channel);
+      unwatch();
     };
   }, [load]);
 

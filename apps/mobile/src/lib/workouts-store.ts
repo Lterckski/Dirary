@@ -8,7 +8,7 @@ import {
 } from '@dirary/shared';
 
 import { readBodyMetrics, readExercises, readRoutines, readTasks, readWorkoutSessions, readWorkoutSets, saveLocal } from './db';
-import { supabase } from './supabase';
+import { watchTables } from './realtime';
 import { subscribeStore, syncTasks } from './tasks-store';
 import { refreshWidgets } from '../widgets/refresh';
 
@@ -118,16 +118,11 @@ export function useWorkoutsStore() {
     listeners.add(load);
     const unsubscribe = subscribeStore(load);
     load();
-    const client = supabase;
-    let channel = client?.channel('workouts_phone');
-    if (channel) {
-      for (const table of [EXERCISES_TABLE, ROUTINES_TABLE, WORKOUT_SESSIONS_TABLE, WORKOUT_SETS_TABLE, BODY_METRICS_TABLE]) channel = channel.on('postgres_changes', { event: '*', schema: 'public', table }, () => { syncTasks(); });
-      channel.subscribe();
-    }
+    const unwatch = watchTables('workouts_phone', [EXERCISES_TABLE, ROUTINES_TABLE, WORKOUT_SESSIONS_TABLE, WORKOUT_SETS_TABLE, BODY_METRICS_TABLE], () => { syncTasks(); });
     return () => {
       listeners.delete(load);
       unsubscribe();
-      if (client && channel) client.removeChannel(channel);
+      unwatch();
     };
   }, [load]);
 
