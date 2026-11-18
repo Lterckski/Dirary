@@ -1,6 +1,6 @@
 /** The weekly review on the phone: tasks done, money by category, workouts and the food streak, Monday to Sunday. */
 import { useMemo, useState } from 'react';
-import { Modal, Pressable, ScrollView, View } from 'react-native';
+import { Pressable, ScrollView, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Path, Svg } from 'react-native-svg';
 import { colors, radius, space } from '@dirary/ui';
@@ -13,6 +13,7 @@ import { Mascot } from '@/components/mascot';
 import { Bar } from '@/components/motion-bits';
 import { Card, Text, styles } from '@/components/ui';
 import { WeekDots } from '@/components/week-dots';
+import { PopUp } from '@/components/pop-up';
 
 const LABEL = { letterSpacing: 1.4, color: colors.muted } as const;
 const NUM = { fontVariant: ['tabular-nums' as const] };
@@ -36,7 +37,7 @@ export function WeekReviewScreen(props: {
   const daysSoFar = review.isThisWeek ? review.days.filter((d) => d <= today).length : 7;
 
   return (
-    <Modal visible animationType="slide" onRequestClose={props.onClose} statusBarTranslucent navigationBarTranslucent>
+    <PopUp onClose={props.onClose} navigationBarTranslucent>
       <View style={[styles.screen, { paddingTop: insets.top + space[3] }]}>
         <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: space[5] }}>
           <Round label="Back to Today" onPress={props.onClose} d="M15 5l-7 7 7 7" />
@@ -117,7 +118,7 @@ export function WeekReviewScreen(props: {
           </Card>
         </ScrollView>
       </View>
-    </Modal>
+    </PopUp>
   );
 }
 

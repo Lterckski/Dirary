@@ -139,7 +139,7 @@ export function Today() {
           <section className="card" aria-labelledby="t-tasks">
             <div className="row" style={{ justifyContent: 'space-between' }}>
               <h2 id="t-tasks" className="card-label">Tasks</h2>
-              <Link className="card-link" to="/tasks">{view.total === 0 ? 'Open' : `${view.done} of ${view.total} done`}</Link>
+              <Link viewTransition className="card-link" to="/tasks">{view.total === 0 ? 'Open' : `${view.done} of ${view.total} done`}</Link>
             </div>
             {tasks.loading ? <p className="muted" role="status">Loading…</p> : shown.length === 0 ? (
               <p className="muted">{view.total > 0 ? 'Everything due today is done.' : 'Nothing due today.'}</p>
@@ -152,7 +152,7 @@ export function Today() {
               </ul>
             )}
             <div className="row card-foot">
-              {more > 0 ? <Link className="card-link" to="/tasks">{more} more today</Link> : <span />}
+              {more > 0 ? <Link viewTransition className="card-link" to="/tasks">{more} more today</Link> : <span />}
               <button type="button" className="btn small" onClick={() => addTo('task')}>Add a task</button>
             </div>
           </section>
@@ -160,7 +160,7 @@ export function Today() {
           <section className="card" aria-labelledby="t-money">
             <div className="row" style={{ justifyContent: 'space-between' }}>
               <h2 id="t-money" className="card-label">{safe.ready ? (safe.safeToday < 0 ? 'Over today’s limit' : 'Safe to spend today') : 'Spent today'}</h2>
-              <Link className="card-link" to="/money">Money</Link>
+              <Link viewTransition className="card-link" to="/money">Money</Link>
             </div>
             {safe.ready ? (
               <>
@@ -196,7 +196,7 @@ export function Today() {
           <section className="card" aria-labelledby="t-food">
             <div className="row" style={{ justifyContent: 'space-between' }}>
               <h2 id="t-food" className="card-label">Food</h2>
-              <Link className="card-link" to="/health" state={{ tab: 'food' }}>Health</Link>
+              <Link viewTransition className="card-link" to="/health" state={{ tab: 'food' }}>Health</Link>
             </div>
             <p className="display today-num">{formatKcal(food.kcal)}<span className="kcal-of">{health.goals?.kcal_target ? ` of ${formatKcal(health.goals.kcal_target)} kcal` : ' kcal'}</span></p>
             <div className="macro-grid">
@@ -245,7 +245,7 @@ export function Today() {
         </div>
       </div>
 
-      <Link className="card week-link" to="/week">
+      <Link viewTransition className="card week-link" to="/week">
         <div className="row" style={{ justifyContent: 'space-between' }}>
           <h2 className="card-label">This week</h2>
           <span className="card-link">Weekly review</span>
@@ -258,7 +258,7 @@ export function Today() {
         </dl>
       </Link>
 
-      <p className="note muted today-foot"><Link to="/data">Your data: export and backup</Link></p>
+      <p className="note muted today-foot"><Link viewTransition to="/data">Your data: export and backup</Link></p>
 
       {offer && (
         <div className="offer" role="status">

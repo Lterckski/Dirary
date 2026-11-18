@@ -1,7 +1,7 @@
 /** A workout in progress, full screen: one exercise at a time, sets prefilled from last time, and a rest timer. */
 import * as Haptics from 'expo-haptics';
 import { useEffect, useMemo, useState } from 'react';
-import { Modal, Pressable, ScrollView, TextInput, View } from 'react-native';
+import { Pressable, ScrollView, TextInput, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Svg, { Circle, Path } from 'react-native-svg';
 import { colors, space } from '@dirary/ui';
@@ -10,6 +10,7 @@ import { formatKg, lastSets, parseKg, planOf, prefill, setsLabel, targetLabel, t
 import { Chip } from '@/components/task-bits';
 import { Button, Text, styles } from '@/components/ui';
 import { ExercisePicker } from '@/components/exercise-picker';
+import { PopUp } from '@/components/pop-up';
 import { cancelRestAlert, scheduleRestAlert } from '@/lib/reminders';
 import { finishWorkout, logSet, unlogSet, type useWorkoutsStore } from '@/lib/workouts-store';
 
@@ -49,7 +50,7 @@ export function WorkoutSessionScreen({ session, store, onClose }: { session: Wor
   }
 
   return (
-    <Modal visible animationType="slide" onRequestClose={onClose} statusBarTranslucent navigationBarTranslucent>
+    <PopUp onClose={onClose} navigationBarTranslucent>
       <View style={[styles.screen, { paddingTop: insets.top + space[3] }]}>
         <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: space[5] }}>
           <Pressable accessibilityRole="button" accessibilityLabel="Back to Health" onPress={onClose} hitSlop={4}
@@ -95,7 +96,7 @@ export function WorkoutSessionScreen({ session, store, onClose }: { session: Wor
           )}
         </ScrollView>
       </View>
-    </Modal>
+    </PopUp>
   );
 }
 

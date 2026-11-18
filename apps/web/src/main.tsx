@@ -1,6 +1,6 @@
 import { StrictMode } from 'react';
 import { createRoot } from 'react-dom/client';
-import { BrowserRouter } from 'react-router-dom';
+import { RouterProvider, createBrowserRouter } from 'react-router-dom';
 import { colors, fonts, radius } from '@dirary/ui';
 import { App } from './App';
 import './styles.css';
@@ -12,10 +12,12 @@ for (const [name, value] of Object.entries(radius)) style.setProperty(`--r-${nam
 style.setProperty('--font-display', fonts.webDisplay);
 style.setProperty('--font-body', fonts.webBody);
 
+// A data router (rather than <BrowserRouter>) so links can use the browser's view transitions between pages.
+// App still declares its own <Routes> under this one catch-all route.
+const router = createBrowserRouter([{ path: '*', element: <App /> }]);
+
 createRoot(document.getElementById('root')!).render(
   <StrictMode>
-    <BrowserRouter>
-      <App />
-    </BrowserRouter>
+    <RouterProvider router={router} />
   </StrictMode>,
 );

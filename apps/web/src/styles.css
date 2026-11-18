@@ -683,3 +683,24 @@ input[type='date'].input, input[type='time'].input { cursor: pointer; }
 .late-text { color: var(--red); }
 @media (max-width: 720px) { .today-hero .add-row { display: none; } }
 @media (max-width: 720px) { .today-hero .hero-line { padding-right: 104px; } }
+
+/* ---- Changing pages ----
+   The page area crossfades and slides 16px in the direction of the tab you picked; the nav and the + stay still.
+   Short (220ms) because it happens many times a day. With Reduce motion on, it only crossfades. */
+.main { view-transition-name: page; }
+::view-transition-old(root), ::view-transition-new(root) { animation: none; }
+::view-transition-group(page) { animation: none; }
+@keyframes page-out { to { opacity: 0; } }
+@keyframes page-in-fade { from { opacity: 0; } }
+@keyframes page-in-forward { from { opacity: 0; transform: translateX(16px); } }
+@keyframes page-in-back { from { opacity: 0; transform: translateX(-16px); } }
+@media (prefers-reduced-motion: no-preference) {
+  ::view-transition-old(page) { animation: page-out 120ms ease-out both; }
+  ::view-transition-new(page) { animation: page-in-fade 220ms var(--ease-out) both; }
+  html[data-nav='forward']::view-transition-new(page) { animation-name: page-in-forward; }
+  html[data-nav='back']::view-transition-new(page) { animation-name: page-in-back; }
+}
+@media (prefers-reduced-motion: reduce) {
+  ::view-transition-old(page) { animation: page-out 120ms ease-out both; }
+  ::view-transition-new(page) { animation: page-in-fade 120ms ease-out both; }
+}

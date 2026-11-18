@@ -2,12 +2,13 @@
 import { CameraView, useCameraPermissions } from 'expo-camera';
 import * as Haptics from 'expo-haptics';
 import { useRef, useState } from 'react';
-import { Modal, Pressable, TextInput, View } from 'react-native';
+import { Pressable, TextInput, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { colors, radius, space } from '@dirary/ui';
 import { isBarcode } from '@dirary/shared';
 
 import { Button, Text, styles } from '@/components/ui';
+import { PopUp } from '@/components/pop-up';
 
 export function BarcodeScanner({ onCode, onClose }: { onCode: (code: string) => void; onClose: () => void }) {
   const [permission, requestPermission] = useCameraPermissions();
@@ -23,7 +24,7 @@ export function BarcodeScanner({ onCode, onClose }: { onCode: (code: string) => 
   }
 
   return (
-    <Modal visible animationType="slide" onRequestClose={onClose} statusBarTranslucent navigationBarTranslucent>
+    <PopUp onClose={onClose} navigationBarTranslucent>
       <View style={{ flex: 1, backgroundColor: colors.night }}>
         {permission?.granted ? (
           <CameraView style={{ flex: 1 }} facing="back"
@@ -58,6 +59,6 @@ export function BarcodeScanner({ onCode, onClose }: { onCode: (code: string) => 
           <Button primary label="Look up" disabled={!isBarcode(typed)} onPress={() => finish(typed)} />
         </View>
       </View>
-    </Modal>
+    </PopUp>
   );
 }

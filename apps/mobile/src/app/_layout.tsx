@@ -5,7 +5,8 @@ import { Tabs } from 'expo-router/js-tabs';
 import * as SplashScreen from 'expo-splash-screen';
 import { StatusBar } from 'expo-status-bar';
 import { useEffect } from 'react';
-import { Alert, Pressable } from 'react-native';
+import { Alert, Easing, Pressable } from 'react-native';
+import { useReducedMotion } from 'react-native-reanimated';
 import { colors, fonts } from '@dirary/ui';
 
 import { HealthIcon, MoneyIcon, TasksIcon, TodayIcon } from '@/components/icons';
@@ -16,6 +17,23 @@ import { useSession } from '@/lib/session';
 import { supabase } from '@/lib/supabase';
 
 SplashScreen.preventAutoHideAsync();
+
+/**
+ * Changing tabs: the new screen fades in while sliding a short way from the side its tab sits on,
+ * and the old one leaves the other way. Short, because you switch tabs many times a day.
+ * With Reduce motion on, it only crossfades.
+ */
+const TAB_SHIFT = {
+  animation: 'shift',
+  transitionSpec: { animation: 'timing', config: { duration: 220, easing: Easing.bezier(0.23, 1, 0.32, 1) } },
+  sceneStyleInterpolator: ({ current }: { current: { progress: import('react-native').Animated.Value } }) => ({
+    sceneStyle: {
+      opacity: current.progress.interpolate({ inputRange: [-1, 0, 1], outputRange: [0, 1, 0] }),
+      transform: [{ translateX: current.progress.interpolate({ inputRange: [-1, 0, 1], outputRange: [-24, 0, 24] }) }],
+    },
+  }),
+} as const;
+const TAB_FADE = { animation: 'fade', transitionSpec: { animation: 'timing', config: { duration: 150, easing: Easing.out(Easing.quad) } } } as const;
 
 export function CoachButton() {
   return (
@@ -30,6 +48,7 @@ export function CoachButton() {
 }
 
 export default function RootLayout() {
+  const reduceMotion = useReducedMotion();
   const [fontsLoaded, fontError] = useFonts({
     BricolageGrotesque_800ExtraBold, Inter_400Regular, Inter_500Medium, Inter_600SemiBold, Inter_700Bold,
   });
@@ -50,6 +69,7 @@ export default function RootLayout() {
       <Tabs
         tabBar={(props) => <FloatingTabBar {...props} />}
         screenOptions={{
+          ...(reduceMotion ? TAB_FADE : TAB_SHIFT),
           headerStyle: { backgroundColor: colors.night },
           headerShadowVisible: false,
           headerTintColor: colors.text,

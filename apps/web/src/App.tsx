@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { NavLink, Route, Routes, useLocation } from 'react-router-dom';
-import { ADD_KINDS, useAddTo } from './addTo';
+import { ADD_KINDS, markDirection, useAddTo } from './addTo';
 import { HealthIcon, MoneyIcon, TasksIcon, TodayIcon } from './icons';
 import { Mascot } from './Mascot';
 import { SetupNeeded, SignIn } from './pages/SignIn';
@@ -40,15 +40,15 @@ function Shell() {
           <span className="brand-badge"><Mascot mood="coach" size={40} /></span>
           Dirary
         </div>
-        <NavLink to="/" end><TodayIcon />Today</NavLink>
-        <NavLink to="/tasks"><TasksIcon />Tasks</NavLink>
+        <NavLink viewTransition onClick={() => markDirection('/')} to="/" end><TodayIcon />Today</NavLink>
+        <NavLink viewTransition onClick={() => markDirection('/tasks')} to="/tasks"><TasksIcon />Tasks</NavLink>
         <button type="button" className="fab" aria-label={pathname === '/money' ? 'Add a transaction' : pathname === '/health' ? 'Log food' : pathname === '/' ? 'Add something' : 'Add a task'}
           aria-expanded={pathname === '/' ? menu : undefined} aria-haspopup={pathname === '/' ? 'menu' : undefined} onClick={add}>
           <svg viewBox="0 0 28 28" aria-hidden="true"><path d="M14 5v18M5 14h18" /></svg>
         </button>
-        <NavLink to="/money"><MoneyIcon />Money</NavLink>
-        <NavLink to="/health"><HealthIcon />Health</NavLink>
-        <NavLink to="/data" className="nav-small" style={{ marginTop: 'auto' }}>Your data</NavLink>
+        <NavLink viewTransition onClick={() => markDirection('/money')} to="/money"><MoneyIcon />Money</NavLink>
+        <NavLink viewTransition onClick={() => markDirection('/health')} to="/health"><HealthIcon />Health</NavLink>
+        <NavLink viewTransition to="/data" className="nav-small" style={{ marginTop: 'auto' }}>Your data</NavLink>
         <button className="link" type="button" style={{ textAlign: 'left' }} onClick={() => supabase?.auth.signOut()}>
           Sign out
         </button>

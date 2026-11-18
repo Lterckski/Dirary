@@ -74,7 +74,7 @@ export function Week() {
           <section className="card" aria-labelledby="w-tasks">
             <div className="row" style={{ justifyContent: 'space-between' }}>
               <h2 id="w-tasks" className="card-label">Tasks done</h2>
-              <Link className="card-link" to="/tasks">Tasks</Link>
+              <Link viewTransition className="card-link" to="/tasks">Tasks</Link>
             </div>
             <ol className="day-bars">
               {review.days.map((d, i) => (
@@ -91,7 +91,7 @@ export function Week() {
           <section className="card" aria-labelledby="w-money">
             <div className="row" style={{ justifyContent: 'space-between' }}>
               <h2 id="w-money" className="card-label">Money spent</h2>
-              <Link className="card-link" to="/money">Money</Link>
+              <Link viewTransition className="card-link" to="/money">Money</Link>
             </div>
             <p className="display today-num">{formatPeso(review.spent)}</p>
             {review.spentLastWeek > 0 && (review.isThisWeek ? (
@@ -122,7 +122,7 @@ export function Week() {
           <section className="card" aria-labelledby="w-work">
             <div className="row" style={{ justifyContent: 'space-between' }}>
               <h2 id="w-work" className="card-label">Workouts</h2>
-              <Link className="card-link" to="/health" state={{ tab: 'workouts' }}>Health</Link>
+              <Link viewTransition className="card-link" to="/health" state={{ tab: 'workouts' }}>Health</Link>
             </div>
             <ol className="week" aria-label="Workouts this week">
               {review.workoutDays.map((d) => (
@@ -140,7 +140,7 @@ export function Week() {
           <section className="card" aria-labelledby="w-food">
             <div className="row" style={{ justifyContent: 'space-between' }}>
               <h2 id="w-food" className="card-label">Food</h2>
-              <Link className="card-link" to="/health" state={{ tab: 'food' }}>Health</Link>
+              <Link viewTransition className="card-link" to="/health" state={{ tab: 'food' }}>Health</Link>
             </div>
             <dl className="recap-figures">
               <div><dt>Days logged</dt><dd>{review.foodDays} of {review.isThisWeek ? review.days.filter((d) => d <= today).length : 7}</dd></div>
