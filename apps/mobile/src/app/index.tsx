@@ -3,7 +3,8 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as Haptics from 'expo-haptics';
 import { router } from 'expo-router';
 import { useEffect, useMemo, useRef, useState, type ComponentRef } from 'react';
-import { Pressable, ScrollView, View } from 'react-native';
+import { ScrollView, View } from 'react-native';
+import { Press } from '@/components/press';
 import Animated from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Path, Svg } from 'react-native-svg';
@@ -161,7 +162,7 @@ export default function TodayScreen() {
           <Text variant="small" weight="bold" style={{ color: colors.onInkBlue, letterSpacing: 1.3 }}>{now.toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' }).toUpperCase()}</Text>
           <Text variant="title" accessibilityRole="header" style={{ color: colors.onInkBlue }}>{greeting(hour)}, {GREETING_NAME}</Text>
           <Text weight="semi" accessibilityLiveRegion="polite" style={{ color: colors.onInkBlue, marginRight: 96 }}>{loading ? 'Getting your day ready…' : coach.line}</Text>
-          <View pointerEvents="none" accessibilityElementsHidden importantForAccessibility="no-hide-descendants" style={{ position: 'absolute', right: space[6], bottom: 22 }}>
+          <View pointerEvents="none" accessibilityElementsHidden importantForAccessibility="no-hide-descendants" style={{ position: 'absolute', right: space[6], bottom: 36 }}>
             <Mascot mood={loading ? 'happy' : complete ? 'cheer' : coach.mood} size={96} />
           </View>
         </View>
@@ -185,9 +186,9 @@ export default function TodayScreen() {
           <Card>
             <View style={[styles.row, { justifyContent: 'space-between' }]}>
               <Text variant="small" weight="bold" style={LABEL}>TASKS</Text>
-              <Pressable accessibilityRole="link" accessibilityHint="Opens Tasks" onPress={() => router.navigate('/tasks')} hitSlop={12}>
+              <Press accessibilityRole="link" accessibilityHint="Opens Tasks" onPress={() => router.navigate('/tasks')} hitSlop={12}>
                 <Text variant="label" weight="semi" style={[NUM, { color: colors.inkBlue }]}>{view.total === 0 ? 'Open' : `${view.done} of ${view.total} done`}</Text>
-              </Pressable>
+              </Press>
             </View>
             {shown.length === 0 ? (
               <Text muted>{view.total > 0 ? 'Everything due today is done.' : 'Nothing due today.'}</Text>
@@ -259,7 +260,7 @@ export default function TodayScreen() {
             </View>
           </Card>
 
-          <Pressable accessibilityRole="button" accessibilityLabel="Open the weekly review" onPress={() => setReviewing(true)} style={({ pressed }) => ({ opacity: pressed ? 0.85 : 1 })}>
+          <Press accessibilityRole="button" accessibilityLabel="Open the weekly review" onPress={() => setReviewing(true)} style={({ pressed }) => ({ opacity: pressed ? 0.85 : 1 })}>
             <Card>
               <View style={[styles.row, { justifyContent: 'space-between' }]}>
                 <Text variant="small" weight="bold" style={LABEL}>THIS WEEK</Text>
@@ -272,7 +273,7 @@ export default function TodayScreen() {
                 <Figure label="Food streak" value={`${week.streak} day${week.streak === 1 ? '' : 's'}`} />
               </View>
             </Card>
-          </Pressable>
+          </Press>
 
           <View style={{ alignItems: 'center', gap: space[3], paddingTop: space[2] }}>
             <Text variant="label" muted style={{ textAlign: 'center' }}>Export your data or check the weekly backup from Dirary on the web, under Your data.</Text>
@@ -288,13 +289,13 @@ export default function TodayScreen() {
           <Text variant="label" numberOfLines={1} style={{ flex: 1 }}>
             Log <Text variant="label" weight="bold" style={NUM}>{formatPeso(offer.amount)}</Text> for {offer.note}?
           </Text>
-          <Pressable accessibilityRole="button" onPress={logOffer}
+          <Press accessibilityRole="button" onPress={logOffer}
             style={({ pressed }) => ({ minHeight: 40, paddingHorizontal: space[4], borderRadius: radius.pill, backgroundColor: colors.inkBlue, justifyContent: 'center', opacity: pressed ? 0.7 : 1 })}>
             <Text variant="label" weight="bold" style={{ color: colors.onInkBlue }}>Log it</Text>
-          </Pressable>
-          <Pressable accessibilityRole="button" accessibilityLabel="Not now" onPress={() => setOffer(null)} hitSlop={4} style={{ width: 40, height: 40, alignItems: 'center', justifyContent: 'center' }}>
+          </Press>
+          <Press accessibilityRole="button" accessibilityLabel="Not now" onPress={() => setOffer(null)} hitSlop={4} style={{ width: 40, height: 40, alignItems: 'center', justifyContent: 'center' }}>
             <Text weight="semi" muted>✕</Text>
-          </Pressable>
+          </Press>
         </Animated.View>
       )}
       {logging && (

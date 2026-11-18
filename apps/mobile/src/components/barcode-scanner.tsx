@@ -2,7 +2,8 @@
 import { CameraView, useCameraPermissions } from 'expo-camera';
 import * as Haptics from 'expo-haptics';
 import { useRef, useState } from 'react';
-import { Pressable, TextInput, View } from 'react-native';
+import { TextInput, View } from 'react-native';
+import { Press } from '@/components/press';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { colors, radius, space } from '@dirary/ui';
 import { isBarcode } from '@dirary/shared';
@@ -47,10 +48,10 @@ export function BarcodeScanner({ onCode, onClose }: { onCode: (code: string) => 
           </View>
         )}
 
-        <Pressable accessibilityRole="button" accessibilityLabel="Close" onPress={onClose} hitSlop={8}
+        <Press accessibilityRole="button" accessibilityLabel="Close" onPress={onClose} hitSlop={8}
           style={{ position: 'absolute', top: insets.top + space[3], right: space[4], width: 48, height: 48, borderRadius: 24, backgroundColor: colors.raised, alignItems: 'center', justifyContent: 'center' }}>
           <Text variant="heading">✕</Text>
-        </Pressable>
+        </Press>
 
         <View style={{ position: 'absolute', left: space[4], right: space[4], bottom: insets.bottom + space[4], flexDirection: 'row', gap: space[2], padding: space[2], borderRadius: radius.pill, backgroundColor: colors.surface, borderWidth: 1, borderColor: colors.line }}>
           <TextInput accessibilityLabel="Barcode number" value={typed} onChangeText={(t) => setTyped(t.replace(/\D/g, '').slice(0, 14))} keyboardType="number-pad"

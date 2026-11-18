@@ -94,7 +94,20 @@ export function TodaySpendWidget({ data }: { data: WidgetData }) {
   );
 }
 
-/** 2×2 widget: calories and protein left today, and a + that opens the food search. Tap anywhere else to open Health. */
+/** Adds a glass of water right from the home screen, without opening the app. */
+function WaterButton({ data }: { data: WidgetData }) {
+  const full = data.water >= data.waterGoal;
+  return (
+    <FlexWidget
+      clickAction="ADD_WATER"
+      accessibilityLabel={`Add a glass of water. ${data.water} of ${data.waterGoal} today.`}
+      style={{ height: 30, paddingHorizontal: 10, borderRadius: 15, backgroundColor: full ? colors.inkBlue : colors.raised, alignItems: 'center', justifyContent: 'center' }}>
+      <TextWidget text={`+💧 ${data.water}/${data.waterGoal}`} maxLines={1} style={{ fontSize: 12, fontWeight: '800', color: full ? colors.onInkBlue : colors.text }} />
+    </FlexWidget>
+  );
+}
+
+/** 2×2 widget: calories and protein left today, a + that opens the food search, and a water button that logs a glass in place. Tap anywhere else to open Health. */
 export function FoodTodayWidget({ data }: { data: WidgetData }) {
   const kcalLeft = data.kcalTarget === null ? null : Math.round(data.kcalTarget - data.kcalEaten);
   const proteinLeft = data.proteinTarget === null ? null : Math.max(0, Math.round(data.proteinTarget - data.proteinEaten));
@@ -117,9 +130,14 @@ export function FoodTodayWidget({ data }: { data: WidgetData }) {
         <TextWidget text={formatKcal(kcalLeft === null ? data.kcalEaten : Math.abs(kcalLeft))} maxLines={1} style={{ fontSize: 28, fontWeight: '800', color: over ? colors.red : colors.text, adjustsFontSizeToFit: true }} />
         <TextWidget text={kcalLeft === null ? 'kcal eaten today' : over ? 'kcal over today' : 'kcal left today'} maxLines={1} style={{ fontSize: 12, fontWeight: '600', color: colors.muted }} />
       </FlexWidget>
-      <TextWidget
-        text={proteinLeft === null ? `${Math.round(data.proteinEaten)} g protein` : proteinLeft === 0 ? 'Protein target hit' : `${proteinLeft} g protein to go`}
-        maxLines={1} truncate="END" style={{ fontSize: 12, fontWeight: '700', color: colors.tongue }} />
+      <FlexWidget style={{ width: 'match_parent', flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', flexGap: 6 }}>
+        <FlexWidget style={{ flex: 1 }}>
+          <TextWidget
+            text={proteinLeft === null ? `${Math.round(data.proteinEaten)} g protein` : proteinLeft === 0 ? 'Protein hit' : `${proteinLeft} g protein to go`}
+            maxLines={1} truncate="END" style={{ fontSize: 12, fontWeight: '700', color: colors.tongue }} />
+        </FlexWidget>
+        <WaterButton data={data} />
+      </FlexWidget>
     </FlexWidget>
   );
 }

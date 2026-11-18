@@ -23,6 +23,18 @@
     "plugins": [
       "expo-router",
       [
+        "expo-notifications",
+        {
+          "icon": "./assets/notifications/icon.png",
+          "largeIcon": "./assets/notifications/ink-large.png",
+          "color": "#7C83FF",
+          "sounds": [
+            "./assets/sounds/bark.wav"
+          ],
+          "defaultChannel": "ink-bark"
+        }
+      ],
+      [
         "expo-splash-screen",
         {
           "backgroundColor": "#0A0B0E",
@@ -113,13 +125,6 @@
               "updatePeriodMillis": 1800000
             }
           ]
-        }
-      ],
-      [
-        "expo-notifications",
-        {
-          "color": "#7C83FF",
-          "defaultChannel": "task-reminders"
         }
       ],
       "react-native-health-connect",

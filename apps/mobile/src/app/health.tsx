@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState, type ComponentRef } from 'react';
 import { useLocalSearchParams } from 'expo-router';
-import { Pressable, ScrollView, TextInput, View } from 'react-native';
+import { ScrollView, TextInput, View } from 'react-native';
+import { Press } from '@/components/press';
 import Animated from 'react-native-reanimated';
 import Svg, { Circle, Path } from 'react-native-svg';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -128,13 +129,13 @@ export default function HealthScreen() {
           </View>
           <View style={{ width: 230, flexDirection: 'row', padding: 3, borderRadius: radius.pill, backgroundColor: colors.night }} accessibilityRole="tablist">
             {(['food', 'workouts'] as const).map((t) => (
-              <Pressable key={t} accessibilityRole="tab" accessibilityState={{ selected: tab === t }} onPress={() => setTab(t)}
+              <Press key={t} accessibilityRole="tab" accessibilityState={{ selected: tab === t }} onPress={() => setTab(t)}
                 style={{ flex: 1, minHeight: 44, borderRadius: radius.pill, backgroundColor: tab === t ? colors.inkBlue : 'transparent', alignItems: 'center', justifyContent: 'center' }}>
                 <Text weight={tab === t ? 'bold' : 'semi'} style={{ color: tab === t ? colors.onInkBlue : colors.muted }}>{t === 'food' ? 'Food' : 'Workouts'}</Text>
-              </Pressable>
+              </Press>
             ))}
           </View>
-          <View pointerEvents="none" accessibilityElementsHidden importantForAccessibility="no-hide-descendants" style={{ position: 'absolute', right: space[6], bottom: 22 }}>
+          <View pointerEvents="none" accessibilityElementsHidden importantForAccessibility="no-hide-descendants" style={{ position: 'absolute', right: space[6], bottom: 36 }}>
             <Mascot mood="happy" size={88} />
           </View>
         </View>
@@ -145,10 +146,10 @@ export default function HealthScreen() {
             <Card style={{ borderRadius: 28 }}>
               <View style={[styles.row, { justifyContent: 'space-between' }]}>
                 <Text variant="small" weight="bold" style={LABEL}>{kcalLeft === null ? 'EATEN TODAY' : kcalLeft >= 0 ? 'CALORIES LEFT TODAY' : 'CALORIES OVER TODAY'}</Text>
-                <Pressable accessibilityRole="button" accessibilityLabel="Set daily targets" onPress={() => setOpen({ kind: 'goals' })} hitSlop={2}
+                <Press accessibilityRole="button" accessibilityLabel="Set daily targets" onPress={() => setOpen({ kind: 'goals' })} hitSlop={2}
                   style={{ width: 44, height: 44, borderRadius: 22, backgroundColor: colors.raised, alignItems: 'center', justifyContent: 'center' }}>
                   <Svg width={18} height={18} viewBox="0 0 24 24"><Path d="M4 20h4L19 9l-4-4L4 16v4z" fill="none" stroke={colors.text} strokeWidth={2} strokeLinejoin="round" /></Svg>
-                </Pressable>
+                </Press>
               </View>
               <View style={[styles.row, { alignItems: 'baseline', gap: space[2] }]}>
                 <Text variant="hero" style={[NUM, kcalLeft !== null && kcalLeft < 0 && { color: colors.red }]}>{formatKcal(kcalLeft === null ? totals.kcal : Math.abs(kcalLeft))}</Text>
@@ -182,10 +183,10 @@ export default function HealthScreen() {
             </View>
             <View accessibilityRole="none" accessibilityLabel="Glasses of water today" style={{ flexDirection: 'row' }}>
               {Array.from({ length: Math.max(glassGoal, glasses) }, (_, i) => i + 1).map((n) => (
-                <Pressable key={n} accessibilityRole="button" accessibilityState={{ selected: n <= glasses }} accessibilityLabel={n <= glasses ? `Glass ${n}, drunk. Tap to undo` : `Glass ${n}`}
+                <Press key={n} accessibilityRole="button" accessibilityState={{ selected: n <= glasses }} accessibilityLabel={n <= glasses ? `Glass ${n}, drunk. Tap to undo` : `Glass ${n}`}
                   onPress={() => tapWater(water, n)} style={{ flex: 1, height: 48, alignItems: 'center', justifyContent: 'center' }}>
                   <Svg width={22} height={28} viewBox="0 0 22 28"><Path d="M11 2C11 2 3 12 3 18a8 8 0 0 0 16 0C19 12 11 2 11 2z" fill={n <= glasses ? colors.inkBlue : 'none'} stroke={colors.inkBlue} strokeWidth={2} strokeLinejoin="round" /></Svg>
-                </Pressable>
+                </Press>
               ))}
             </View>
           </Card>
@@ -194,7 +195,7 @@ export default function HealthScreen() {
             {forMeal && (
               <View style={[styles.row, { gap: space[2] }]}>
                 <Text variant="label" muted>Adding to {MEAL_LABEL[forMeal].toLowerCase()}.</Text>
-                <Pressable accessibilityRole="button" onPress={() => setForMeal(null)} hitSlop={8}><Text variant="label" weight="semi" style={{ color: colors.inkBlue }}>Cancel</Text></Pressable>
+                <Press accessibilityRole="button" onPress={() => setForMeal(null)} hitSlop={8}><Text variant="label" weight="semi" style={{ color: colors.inkBlue }}>Cancel</Text></Press>
               </View>
             )}
             <View style={{ flexDirection: 'row', gap: space[3] }}>
@@ -204,33 +205,33 @@ export default function HealthScreen() {
                 style={{ flex: 1, minHeight: 48, color: colors.text, fontSize: 16 }} returnKeyType="search" autoCorrect={false}
                 onSubmitEditing={() => { const r = results[0]; if (r) choose({ food: r.food, starter: r.starter }); }} />
             </View>
-            <Pressable accessibilityRole="button" accessibilityLabel="Scan a barcode" onPress={() => { input.current?.blur(); setOpen({ kind: 'scan' }); }}
+            <Press accessibilityRole="button" accessibilityLabel="Scan a barcode" onPress={() => { input.current?.blur(); setOpen({ kind: 'scan' }); }}
               style={({ pressed }) => ({ width: 52, height: 52, borderRadius: 18, backgroundColor: colors.inkBlue, alignItems: 'center', justifyContent: 'center', opacity: pressed ? 0.8 : 1 })}>
               <Svg width={24} height={24} viewBox="0 0 24 24"><Path d="M3 7V4h3M18 4h3v3M21 17v3h-3M6 20H3v-3M7 8v8M10 8v8M13 8v8M17 8v8" fill="none" stroke={colors.onInkBlue} strokeWidth={2} strokeLinecap="round" /></Svg>
-            </Pressable>
+            </Press>
             </View>
             {looking && <Text variant="label" muted accessibilityLiveRegion="polite">{looking}</Text>}
             {query.trim() !== '' && (
               <Animated.View entering={ENTER} style={{ borderRadius: 20, borderWidth: 1, borderColor: colors.line, backgroundColor: colors.raised, padding: 6 }}>
                 {results.map((r) => (
-                  <Pressable key={r.food?.id ?? r.starter!.key} accessibilityRole="button" onPress={() => choose({ food: r.food, starter: r.starter })}
+                  <Press key={r.food?.id ?? r.starter!.key} accessibilityRole="button" onPress={() => choose({ food: r.food, starter: r.starter })}
                     style={({ pressed }) => ({ flexDirection: 'row', alignItems: 'center', gap: space[3], minHeight: 48, paddingHorizontal: space[3], borderRadius: 14, backgroundColor: pressed ? colors.surface : 'transparent' })}>
                     <Text weight="semi" style={{ flex: 1 }} numberOfLines={1}>{r.name}</Text>
                     <Text variant="small" weight="bold" style={{ color: r.source === 'own' ? colors.inkBlue : colors.muted, letterSpacing: 0.8 }}>{FOOD_SOURCE_LABEL[r.source].toUpperCase()}</Text>
-                  </Pressable>
+                  </Press>
                 ))}
                 {remote.map((u) => (
-                  <Pressable key={u.key} accessibilityRole="button" onPress={() => choose({ food: null, starter: u })}
+                  <Press key={u.key} accessibilityRole="button" onPress={() => choose({ food: null, starter: u })}
                     style={({ pressed }) => ({ flexDirection: 'row', alignItems: 'center', gap: space[3], minHeight: 48, paddingHorizontal: space[3], borderRadius: 14, backgroundColor: pressed ? colors.surface : 'transparent' })}>
                     <Text weight="semi" style={{ flex: 1 }} numberOfLines={2}>{u.name}</Text>
                     <Text variant="small" weight="bold" style={{ color: colors.muted, letterSpacing: 0.8 }}>USDA</Text>
-                  </Pressable>
+                  </Press>
                 ))}
                 {(usda.searching || usda.problem) && <Text variant="label" style={{ color: colors.faint, paddingHorizontal: space[3], paddingVertical: space[2] }}>{usda.problem ?? 'Searching USDA…'}</Text>}
-                <Pressable accessibilityRole="button" onPress={() => { const name = query.trim(); setQuery(''); input.current?.blur(); setOpen({ kind: 'food', food: null, name }); }}
+                <Press accessibilityRole="button" onPress={() => { const name = query.trim(); setQuery(''); input.current?.blur(); setOpen({ kind: 'food', food: null, name }); }}
                   style={({ pressed }) => ({ minHeight: 48, justifyContent: 'center', paddingHorizontal: space[3], borderRadius: 14, backgroundColor: pressed ? colors.surface : 'transparent' })}>
                   <Text weight="semi" muted numberOfLines={1}>+ New food “{query.trim()}”</Text>
-                </Pressable>
+                </Press>
               </Animated.View>
             )}
           </View>
@@ -252,20 +253,20 @@ export default function HealthScreen() {
                     <Text variant="label" muted style={NUM}>{m.logs.length ? `${formatKcal(m.kcal)} kcal` : '—'}</Text>
                   </View>
                   {m.logs.map((log) => (
-                    <Pressable key={log.id} accessibilityRole="button" accessibilityHint="Change the amount or meal" onPress={() => setOpen({ kind: 'edit', log })}
+                    <Press key={log.id} accessibilityRole="button" accessibilityHint="Change the amount or meal" onPress={() => setOpen({ kind: 'edit', log })}
                       style={({ pressed }) => ({ flexDirection: 'row', alignItems: 'center', gap: space[3], minHeight: 56, paddingVertical: space[2], paddingHorizontal: 14, borderRadius: 18, borderWidth: 1, borderColor: colors.line, backgroundColor: colors.night, opacity: pressed ? 0.8 : 1 })}>
                       <View style={{ flex: 1, gap: 2 }}>
                         <Text weight="semi" numberOfLines={2}>{log.name}</Text>
                         <Text variant="label" muted>{logAmount(log, foods)} · {Math.round(log.protein_g)} g protein</Text>
                       </View>
                       <Text weight="bold" style={NUM}>{formatKcal(log.kcal)}</Text>
-                    </Pressable>
+                    </Press>
                   ))}
                   {m.logs.length === 0 && (
-                    <Pressable accessibilityRole="button" onPress={() => { setForMeal(meal); scroller.current?.scrollTo({ y: 380, animated: true }); input.current?.focus(); }}
+                    <Press accessibilityRole="button" onPress={() => { setForMeal(meal); scroller.current?.scrollTo({ y: 380, animated: true }); input.current?.focus(); }}
                       style={({ pressed }) => ({ minHeight: 52, borderRadius: 18, borderWidth: 1.5, borderStyle: 'dashed', borderColor: colors.line, alignItems: 'center', justifyContent: 'center', opacity: pressed ? 0.7 : 1 })}>
                       <Text weight="semi" muted>+ Add {meal === 'snack' ? 'a snack' : meal}</Text>
-                    </Pressable>
+                    </Press>
                   )}
                 </View>
               );
@@ -289,13 +290,13 @@ export default function HealthScreen() {
           <Text variant="label" numberOfLines={1} style={{ flex: 1 }}>
             Log <Text variant="label" weight="bold" style={NUM}>{formatPeso(paid.amount)}</Text> for {paid.note}?
           </Text>
-          <Pressable accessibilityRole="button" onPress={logPaid}
+          <Press accessibilityRole="button" onPress={logPaid}
             style={({ pressed }) => ({ minHeight: 40, paddingHorizontal: space[4], borderRadius: radius.pill, backgroundColor: colors.inkBlue, justifyContent: 'center', opacity: pressed ? 0.7 : 1 })}>
             <Text variant="label" weight="bold" style={{ color: colors.onInkBlue }}>Log it</Text>
-          </Pressable>
-          <Pressable accessibilityRole="button" accessibilityLabel="Not now" onPress={() => setPaid(null)} hitSlop={4} style={{ width: 40, height: 40, alignItems: 'center', justifyContent: 'center' }}>
+          </Press>
+          <Press accessibilityRole="button" accessibilityLabel="Not now" onPress={() => setPaid(null)} hitSlop={4} style={{ width: 40, height: 40, alignItems: 'center', justifyContent: 'center' }}>
             <Text weight="semi" muted>✕</Text>
-          </Pressable>
+          </Press>
         </Animated.View>
       )}
       {logging && (
@@ -309,10 +310,10 @@ export default function HealthScreen() {
 function GramsField({ text, setText }: { text: string; setText: (t: string) => void }) {
   const step = (d: number) => setText(String(Math.max(1, Math.round((parseGrams(text) ?? 0) + d))));
   const stepper = (label: string, d: number, glyph: string) => (
-    <Pressable accessibilityRole="button" accessibilityLabel={label} onPress={() => step(d)}
+    <Press accessibilityRole="button" accessibilityLabel={label} onPress={() => step(d)}
       style={({ pressed }) => ({ width: 56, height: 64, borderRadius: 20, borderWidth: 1, borderColor: colors.line, backgroundColor: pressed ? colors.line : colors.raised, alignItems: 'center', justifyContent: 'center' })}>
       <Text variant="heading">{glyph}</Text>
-    </Pressable>
+    </Press>
   );
   return (
     <View style={{ flexDirection: 'row', alignItems: 'center', gap: space[3] }}>
@@ -409,9 +410,9 @@ function EditLogSheet({ log, food, onClose }: { log: FoodLog; food: Food | null;
       <Text muted style={NUM}>{formatKcal(n.kcal)} kcal · {Math.round(n.protein)} g protein</Text>
       <Segmented<Meal> label="Meal" value={meal} options={MEAL_OPTIONS} onChange={setMeal} />
       <Button primary label="Save" disabled={!grams} onPress={async () => { if (!grams) return; onClose(); await updateLog(log, food, grams, meal); }} />
-      <Pressable accessibilityRole="button" onPress={() => { onClose(); removeLog(log); }} style={{ minHeight: 48, alignItems: 'center', justifyContent: 'center' }}>
+      <Press accessibilityRole="button" onPress={() => { onClose(); removeLog(log); }} style={{ minHeight: 48, alignItems: 'center', justifyContent: 'center' }}>
         <Text weight="semi" style={{ color: colors.red }}>Remove</Text>
-      </Pressable>
+      </Press>
     </Sheet>
   );
 }
@@ -465,9 +466,9 @@ function FoodSheet({ food, name: startName, barcode, onSaved, onClose }: { food:
       {problem && <Text variant="label" style={{ color: colors.red }} accessibilityRole="alert">{problem}</Text>}
       <Button primary label={food ? 'Save' : 'Save and log'} onPress={save} />
       {food && (
-        <Pressable accessibilityRole="button" onPress={() => { onClose(); removeFood(food); }} style={{ minHeight: 48, alignItems: 'center', justifyContent: 'center' }}>
+        <Press accessibilityRole="button" onPress={() => { onClose(); removeFood(food); }} style={{ minHeight: 48, alignItems: 'center', justifyContent: 'center' }}>
           <Text weight="semi" style={{ color: colors.red }}>Delete food</Text>
-        </Pressable>
+        </Press>
       )}
     </Sheet>
   );

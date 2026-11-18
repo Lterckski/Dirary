@@ -1,6 +1,7 @@
 /** Health → Workouts on the phone: today's workout, the week, steps, progress and routines. */
 import { useMemo, useState } from 'react';
-import { Pressable, TextInput, View } from 'react-native';
+import { TextInput, View } from 'react-native';
+import { Press } from '@/components/press';
 import Svg, { Circle, G, Line, Path, Text as SvgText } from 'react-native-svg';
 import { colors, space } from '@dirary/ui';
 import {
@@ -92,11 +93,11 @@ export function WorkoutsTab() {
         </View>
         {routines.length === 0 && <Text muted>Make a routine, pick its days, and each one shows up in Tasks as well.</Text>}
         {routines.map((r) => (
-          <Pressable key={r.id} accessibilityRole="button" accessibilityHint="Edit this routine" onPress={() => setOpen({ kind: 'routine', routine: r })}
+          <Press key={r.id} accessibilityRole="button" accessibilityHint="Edit this routine" onPress={() => setOpen({ kind: 'routine', routine: r })}
             style={({ pressed }) => ({ minHeight: 56, paddingVertical: space[2], paddingHorizontal: 14, borderRadius: 18, borderWidth: 1, borderColor: colors.line, backgroundColor: colors.night, justifyContent: 'center', gap: 2, opacity: pressed ? 0.8 : 1 })}>
             <Text weight="semi">{r.name}</Text>
             <Text variant="label" muted>{weekdaysLabel(weekdaysOf(r))} · {planOf(r).length} exercise{planOf(r).length === 1 ? '' : 's'}</Text>
-          </Pressable>
+          </Press>
         ))}
       </Card>
 
@@ -208,10 +209,10 @@ function RoutineSheet({ routine, exercises, count, onClose }: { routine: Routine
           {WEEK_ORDER.map((d) => {
             const on = days.includes(d);
             return (
-              <Pressable key={d} accessibilityRole="button" accessibilityLabel={WEEKDAY_NAME[d]} accessibilityState={{ selected: on }} onPress={() => setDays((all) => (on ? all.filter((x) => x !== d) : [...all, d]))}
+              <Press key={d} accessibilityRole="button" accessibilityLabel={WEEKDAY_NAME[d]} accessibilityState={{ selected: on }} onPress={() => setDays((all) => (on ? all.filter((x) => x !== d) : [...all, d]))}
                 style={{ width: 42, height: 42, borderRadius: 21, alignItems: 'center', justifyContent: 'center', borderWidth: 1, borderColor: on ? colors.inkBlue : colors.line, backgroundColor: on ? colors.inkBlue : colors.raised }}>
                 <Text weight="bold" style={{ color: on ? colors.onInkBlue : colors.text }}>{WEEKDAY_SHORT[d]}</Text>
-              </Pressable>
+              </Press>
             );
           })}
         </View>
@@ -224,9 +225,9 @@ function RoutineSheet({ routine, exercises, count, onClose }: { routine: Routine
             {numberInput('Sets', String(it.sets), (t) => change(i, { sets: Math.max(1, Math.min(20, Number(t) || 1)) }))}
             <Text muted>×</Text>
             {numberInput('Reps, blank for as many as you can', it.reps === null ? '' : String(it.reps), (t) => change(i, { reps: t.trim() ? Math.max(1, Math.min(100, Number(t) || 1)) : null }), 'max')}
-            <Pressable accessibilityRole="button" accessibilityLabel={`Remove ${nameOf(it.exercise_id)}`} onPress={() => setItems((all) => all.filter((_, j) => j !== i))} hitSlop={6} style={{ width: 36, height: 44, alignItems: 'center', justifyContent: 'center' }}>
+            <Press accessibilityRole="button" accessibilityLabel={`Remove ${nameOf(it.exercise_id)}`} onPress={() => setItems((all) => all.filter((_, j) => j !== i))} hitSlop={6} style={{ width: 36, height: 44, alignItems: 'center', justifyContent: 'center' }}>
               <Text weight="semi" muted>✕</Text>
-            </Pressable>
+            </Press>
           </View>
         ))}
         {adding ? (
@@ -236,17 +237,17 @@ function RoutineSheet({ routine, exercises, count, onClose }: { routine: Routine
             setAdding(false);
           }} />
         ) : (
-          <Pressable accessibilityRole="button" onPress={() => setAdding(true)} style={{ minHeight: 48, borderRadius: 14, borderWidth: 1.5, borderStyle: 'dashed', borderColor: colors.line, alignItems: 'center', justifyContent: 'center' }}>
+          <Press accessibilityRole="button" onPress={() => setAdding(true)} style={{ minHeight: 48, borderRadius: 14, borderWidth: 1.5, borderStyle: 'dashed', borderColor: colors.line, alignItems: 'center', justifyContent: 'center' }}>
             <Text weight="semi" muted>+ Add an exercise</Text>
-          </Pressable>
+          </Press>
         )}
       </Field>
       {problem && <Text variant="label" style={{ color: colors.red }} accessibilityRole="alert">{problem}</Text>}
       <Button primary label="Save" onPress={save} />
       {routine && (
-        <Pressable accessibilityRole="button" onPress={() => { onClose(); removeRoutine(routine); }} style={{ minHeight: 48, alignItems: 'center', justifyContent: 'center' }}>
+        <Press accessibilityRole="button" onPress={() => { onClose(); removeRoutine(routine); }} style={{ minHeight: 48, alignItems: 'center', justifyContent: 'center' }}>
           <Text weight="semi" style={{ color: colors.red }}>Delete routine</Text>
-        </Pressable>
+        </Press>
       )}
     </Sheet>
   );

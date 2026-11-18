@@ -69,7 +69,7 @@ Rebuild the phone app (the same EAS command) whenever a native library, the widg
 | --- | --- |
 | `pnpm typecheck` | Type-checks every package |
 | `pnpm test` | Runs unit tests |
-| `pnpm mascot:export` | Re-renders Ink's PNGs (widgets, app icon, splash) after the drawing changes |
+| `pnpm mascot:export` | Cuts Ink out of the art in tools/mascot/source and rewrites every Ink picture (moods, paws, icon, splash, widgets, notifications). Needs Python with numpy, scipy and Pillow |
 | `node install-skills.mjs` | Reinstalls the Claude skills into `.claude/skills` |
 
 ## Phase 1 exit gate

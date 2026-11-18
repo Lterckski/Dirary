@@ -8,7 +8,7 @@
     "build": "pnpm --filter @dirary/web build",
     "typecheck": "pnpm -r typecheck",
     "test": "pnpm -r --if-present test",
-    "mascot:export": "tsx tools/mascot/export-pngs.ts"
+    "mascot:export": "python3 tools/mascot/cutout.py"
   },
   "devDependencies": {
     "typescript": "~6.0.3",

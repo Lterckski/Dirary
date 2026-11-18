@@ -1,5 +1,5 @@
 import { addDays, budgetCoach, currentGoals, currentPlan, dayCoach, dayTotals, fixedThisMonth, foodCoach, formatPeso, localDate, monthSummary, planOf, routineMinutes, safeToSpend, spentOn, todayCoach, todayView, todaysWorkout, type InkMood, type Task } from '@dirary/shared';
-import { readCategories, readFixedExpenses, readFoodLogs, readHealthGoals, readMoneyPlans, readRoutines, readTasks, readTransactions, readWorkoutSessions } from '@/lib/db';
+import { readCategories, readFixedExpenses, readFoodLogs, readHealthGoals, readMoneyPlans, readRoutines, readTasks, readTransactions, readWater, readWorkoutSessions } from '@/lib/db';
 import { todaysSteps } from '@/lib/steps';
 
 export interface WidgetData {
@@ -19,6 +19,9 @@ export interface WidgetData {
   kcalTarget: number | null;
   proteinTarget: number | null;
   foodMood: InkMood;
+  /** Glasses of water today and the daily goal. */
+  water: number;
+  waterGoal: number;
   /** Workouts: today's (null on a rest day), whether it's done, and steps if Health Connect lets us read them. */
   workoutName: string | null;
   workoutDone: boolean;
@@ -45,6 +48,7 @@ export async function widgetData(): Promise<WidgetData> {
   // The food tables exist only once the Phase 3a SQL has run and synced; until then the widget shows zeros.
   const [logs, goalRows] = await Promise.all([readFoodLogs(today).catch(() => []), readHealthGoals().catch(() => [])]);
   const food = dayTotals(logs, today);
+  const water = (await readWater(today).catch(() => [])).filter((w) => w.drunk_on === today).length;
   const goals = currentGoals(goalRows);
   const [routines, sessions] = await Promise.all([readRoutines().catch(() => []), readWorkoutSessions(addDays(today, -1)).catch(() => [])]);
   const workout = todaysWorkout(routines, sessions, today);
@@ -65,6 +69,7 @@ export async function widgetData(): Promise<WidgetData> {
     moneyMood: budgetCoach(month, now.getDate(), daysInMonth).mood,
     kcalEaten: food.kcal, proteinEaten: food.protein, kcalTarget: goals?.kcal_target ?? null, proteinTarget: goals?.protein_target_g ?? null,
     foodMood: foodCoach(food, goals, now.getHours()).mood,
+    water, waterGoal: goals?.water_glasses ?? 8,
     workoutName: workout.session?.name ?? workout.routine?.name ?? null,
     workoutDone: !!workout.session?.done_at,
     workoutLine: workout.session?.done_at ? 'Done. Nice work.' : plan.length ? `${plan.length} exercise${plan.length === 1 ? '' : 's'} · about ${routineMinutes(plan)} min` : workout.session ? 'Under way' : 'Recovery counts too',
