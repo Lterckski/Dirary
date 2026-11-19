@@ -723,3 +723,18 @@ input[type='date'].input, input[type='time'].input { cursor: pointer; }
 .program-progression h3 { margin: 0; }
 .program-progression ul { margin: 0; padding-left: 18px; color: var(--muted); font-size: 14px; display: flex; flex-direction: column; gap: 4px; }
 @media (prefers-reduced-motion: no-preference) { .program-body { animation: task-in 200ms cubic-bezier(0.23, 1, 0.32, 1); } }
+/* ---- Press: everything you can click squishes a little while held and springs back when let go,
+   the same feel as Press on the phone. Small things squish more than big ones. ---- */
+@media (prefers-reduced-motion: no-preference) {
+  :is(.btn, .chip, .add-chip, .add-meal, .round-btn, .step, .cal-nav, .drop, .fab, .chip-x, .offer-close, .nav a, .nav-small, .new, .tile, .wallet-card, .week-link, .food-row, .stash-main, .task-main) {
+    transition: transform 320ms cubic-bezier(0.34, 1.56, 0.64, 1), background-color 160ms ease-out, border-color 160ms ease-out, opacity 160ms ease-out, filter 160ms ease-out;
+    -webkit-tap-highlight-color: transparent;
+  }
+  :is(.btn, .chip, .add-chip, .add-meal, .round-btn, .step, .cal-nav, .drop, .chip-x, .offer-close, .nav-small, .new):active:not(:disabled) { transform: scale(0.94); transition-duration: 80ms; transition-timing-function: ease-out; }
+  .btn.primary:active:not(:disabled) { transform: translateY(2px) scale(0.95); }
+  .fab:active { transform: scale(0.88); transition-duration: 80ms; transition-timing-function: ease-out; }
+  :is(.nav a, .tile, .wallet-card, .week-link, .food-row, .stash-main, .task-main):active { transform: scale(0.98); transition-duration: 90ms; transition-timing-function: ease-out; }
+}
+@media (prefers-reduced-motion: reduce) {
+  :is(.btn, .chip, .add-chip, .fab, .tile, .wallet-card):active { transform: none; opacity: 0.8; }
+}
