@@ -4,20 +4,27 @@ import { useEffect, useState } from 'react';
 import { View } from 'react-native';
 import Animated from 'react-native-reanimated';
 import { colors, space } from '@dirary/ui';
-import { PROGRAM, PROGRAM_PLACE_LABEL, PROGRESSION, localDate, programDayOf, programDayTitle, programTarget, type ProgramPlace } from '@dirary/shared';
+import { PROGRAM, PROGRAM_PLACE_LABEL, PROGRESSION, localDate, programDayOf, programDayTitle, programRoutineId, programTarget, type ProgramPlace, type WorkoutSession } from '@dirary/shared';
 
 import { Mascot } from '@/components/mascot';
 import { Segmented } from '@/components/motion-bits';
 import { Press } from '@/components/press';
-import { Card, Text, styles } from '@/components/ui';
+import { Button, Card, Text, styles } from '@/components/ui';
 import { ENTER } from '@/lib/motion';
 
 const LABEL = { letterSpacing: 1.4, color: colors.muted } as const;
 const PLACE_KEY = 'dirary.programPlace';
+/** Gym or Home, as last picked on the card. */
+export async function readProgramPlace(): Promise<ProgramPlace> {
+  try { return (await AsyncStorage.getItem(PLACE_KEY)) === 'home' ? 'home' : 'gym'; } catch { return 'gym'; }
+}
+
 const PLACES = (['gym', 'home'] as const).map((p) => ({ value: p, label: PROGRAM_PLACE_LABEL[p] }));
 
-export function ProgramCard() {
-  const today = programDayOf(localDate());
+/** Pick a day and start it: its sets are logged like any workout, so "last time" and Progress fill in week to week. */
+export function ProgramCard({ sessions, onStart }: { sessions: readonly WorkoutSession[]; onStart: (place: ProgramPlace, day: number) => void }) {
+  const date = localDate();
+  const today = programDayOf(date);
   const [place, setPlace] = useState<ProgramPlace>('gym');
   const [day, setDay] = useState(today);
   // Remember Gym or Home between visits.
@@ -28,6 +35,11 @@ export function ProgramCard() {
 
   const days = PROGRAM[place];
   const shown = days.find((d) => d.day === day) ?? days[0]!;
+  // Today's workout for this day, if you've started it already.
+  const routineId = programRoutineId(place, shown.day);
+  const mine = sessions.filter((s) => s.routine_id === routineId && s.planned_date === date && !s.deleted_at);
+  const started = mine.find((s) => !s.done_at) ?? mine[0] ?? null;
+  const name = `${shown.title}${shown.focus ? ` (${shown.focus})` : ''}`;
 
   return (
     <Card style={{ borderRadius: 28 }}>
@@ -73,6 +85,10 @@ export function ProgramCard() {
             <Text variant="label" weight="bold" style={{ color: colors.inkBlue, fontVariant: ['tabular-nums'], textAlign: 'right', maxWidth: 110 }}>{programTarget(e.target)}</Text>
           </View>
         ))}
+        {shown.kind === 'lift' && (
+          <Button primary={!started?.done_at} onPress={() => onStart(place, shown.day)}
+            label={started?.done_at ? "See today's sets" : started?.started_at ? `Continue ${name}` : `Start ${name}`} />
+        )}
         {shown.note && (
           <View style={styles.row}>
             <View style={{ width: 56, height: 56, borderRadius: 28, backgroundColor: colors.inkBlue, alignItems: 'center', justifyContent: 'center' }}>

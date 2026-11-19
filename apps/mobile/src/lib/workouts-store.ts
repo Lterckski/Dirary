@@ -3,7 +3,8 @@ import * as Crypto from 'expo-crypto';
 import { useCallback, useEffect, useState } from 'react';
 import {
   BODY_METRICS_TABLE, EXERCISES_TABLE, ROUTINES_TABLE, TASKS_TABLE, WORKOUT_SESSIONS_TABLE, WORKOUT_SETS_TABLE, addDays, localDate, planText, sessionDoneChange,
-  weekdayOf, weekdaysOf, workoutSessionId, workoutTaskId,
+  programWorkout, weekdayOf, weekdaysOf, workoutSessionId, workoutTaskId,
+  type ProgramPlace,
   type BodyMetric, type Exercise, type PlanItem, type Routine, type StarterExercise, type WorkoutSession, type WorkoutSet,
 } from '@dirary/shared';
 
@@ -71,6 +72,32 @@ export async function startWorkout(routine: Routine | null, existing: WorkoutSes
   await saveLocal(WORKOUT_SESSIONS_TABLE, row);
   await changed();
   return row;
+}
+
+/**
+ * Starts (or continues) one lifting day of the program as today's workout. Its exercises and hidden routine have
+ * fixed ids, so they're made once and reused every week; the routine is refreshed if the program text changed.
+ */
+export async function startProgramDay(place: ProgramPlace, day: number): Promise<WorkoutSession | null> {
+  const w = programWorkout(place, day);
+  if (!w) return null;
+  const stamp = now();
+  const have = await readExercises();
+  for (const e of w.exercises) {
+    if (!have.some((x) => x.id === e.id)) await saveLocal(EXERCISES_TABLE, { id: e.id, name: e.name, muscle_group: null, starter_key: null, created_at: stamp, updated_at: stamp, deleted_at: null } satisfies Exercise);
+  }
+  const plan = planText(w.plan);
+  const had = (await readRoutines()).find((r) => r.id === w.routineId);
+  let routine: Routine;
+  if (had && had.plan === plan && had.name === w.name && had.weekdays === '') routine = had;
+  else {
+    routine = had ? { ...had, name: w.name, plan, weekdays: '', updated_at: stamp }
+      : { id: w.routineId, name: w.name, plan, weekdays: '', sort_order: 1000 + day + (place === 'home' ? 10 : 0), created_at: stamp, updated_at: stamp, deleted_at: null };
+    await saveLocal(ROUTINES_TABLE, routine);
+  }
+  const today = localDate();
+  const existing = (await readWorkoutSessions(today)).find((s) => s.routine_id === routine.id && s.planned_date === today) ?? null;
+  return startWorkout(routine, existing);
 }
 
 export async function logSet(session: WorkoutSession, exerciseId: string, setIndex: number, weight_kg: number, reps: number): Promise<void> {

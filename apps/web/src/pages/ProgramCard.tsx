@@ -1,22 +1,29 @@
 import { useState, type CSSProperties } from 'react';
-import { PROGRAM, PROGRAM_PLACE_LABEL, PROGRESSION, localDate, programDayOf, programDayTitle, programTarget, type ProgramPlace } from '@dirary/shared';
+import { PROGRAM, PROGRAM_PLACE_LABEL, PROGRESSION, localDate, programDayOf, programDayTitle, programRoutineId, programTarget, type ProgramPlace, type WorkoutSession } from '@dirary/shared';
 import { Mascot } from '../Mascot';
 
 const PLACE_KEY = 'dirary.programPlace';
 const PLACES = ['gym', 'home'] as const;
 
-function savedPlace(): ProgramPlace {
+/** Gym or Home, as last picked on the card. */
+export function savedPlace(): ProgramPlace {
   try { return localStorage.getItem(PLACE_KEY) === 'home' ? 'home' : 'gym'; } catch { return 'gym'; }
 }
 
 /** Luther's 7-day program, with a Gym / Home switch for days he can't get to the gym. Opens on today (Monday is Day 1). */
-export function ProgramCard() {
-  const today = programDayOf(localDate());
+export function ProgramCard({ sessions, onStart }: { sessions: readonly WorkoutSession[]; onStart: (place: ProgramPlace, day: number) => void | Promise<void> }) {
+  const date = localDate();
+  const today = programDayOf(date);
+  const [busy, setBusy] = useState(false);
   const [place, setPlace] = useState<ProgramPlace>(savedPlace);
   const [day, setDay] = useState(today);
   const choosePlace = (p: ProgramPlace) => { setPlace(p); try { localStorage.setItem(PLACE_KEY, p); } catch { /* private window */ } };
   const days = PROGRAM[place];
   const shown = days.find((d) => d.day === day) ?? days[0]!;
+  // Today's workout for this day, if you've started it already.
+  const mine = sessions.filter((s) => s.routine_id === programRoutineId(place, shown.day) && s.planned_date === date && !s.deleted_at);
+  const started = mine.find((s) => !s.done_at) ?? mine[0] ?? null;
+  const name = `${shown.title}${shown.focus ? ` (${shown.focus})` : ''}`;
 
   return (
     <section className="card" aria-labelledby="program-title">
@@ -47,6 +54,12 @@ export function ProgramCard() {
             <span className="target">{programTarget(e.target)}</span>
           </div>
         ))}
+        {shown.kind === 'lift' && (
+          <button type="button" className={started?.done_at ? 'btn' : 'btn primary big'} disabled={busy}
+            onClick={async () => { setBusy(true); try { await onStart(place, shown.day); } finally { setBusy(false); } }}>
+            {started?.done_at ? "See today's sets" : started?.started_at ? `Continue ${name}` : `Start ${name}`}
+          </button>
+        )}
         {shown.note && (
           <div className="coach">
             <span className="coach-badge"><Mascot mood={shown.kind === 'rest' ? 'sleepy' : 'coach'} size={52} /></span>

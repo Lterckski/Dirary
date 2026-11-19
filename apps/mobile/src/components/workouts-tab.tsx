@@ -1,5 +1,6 @@
 /** Health → Workouts on the phone: today's workout, the week, your program (gym or home), steps, progress and routines. */
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
+import { useLocalSearchParams } from 'expo-router';
 import { TextInput, View } from 'react-native';
 import { Press } from '@/components/press';
 import Svg, { Circle, G, Line, Path, Text as SvgText } from 'react-native-svg';
@@ -7,6 +8,7 @@ import { colors, space } from '@dirary/ui';
 import {
   STARTER_EXERCISES, WEEKDAY_NAME, WEEKDAY_SHORT, WEEK_ORDER, changeLabel, exerciseProgress, formatKg, lastSets, loggedExercises, localDate, parseKg, planOf,
   routineMinutes, setsLabel, targetLabel, todaysWorkout, weekCount, weekStrip, weekdaysLabel, weekdaysOf, weekdaysText, weightSeries, workoutCoach,
+  isProgramRoutine,
   type Exercise, type PlanItem, type ProgressPoint, type Routine, type StarterExercise, type WorkoutSession,
 } from '@dirary/shared';
 
@@ -19,7 +21,7 @@ import { WorkoutSessionScreen } from '@/components/workout-session';
 import { StepsCard } from '@/components/steps-card';
 import { ExercisePicker } from '@/components/exercise-picker';
 import { ProgramCard } from '@/components/program-card';
-import { addExercise, logWeight, removeRoutine, saveRoutine, startWorkout, useWorkoutsStore } from '@/lib/workouts-store';
+import { addExercise, logWeight, removeRoutine, saveRoutine, startProgramDay, startWorkout, useWorkoutsStore } from '@/lib/workouts-store';
 
 const LABEL = { letterSpacing: 1.4, color: colors.muted } as const;
 const NUM = { fontVariant: ['tabular-nums' as const] };
@@ -27,10 +29,15 @@ type Open = { kind: 'routine'; routine: Routine | null } | { kind: 'weight' } | 
 
 export function WorkoutsTab() {
   const store = useWorkoutsStore();
-  const { exercises, routines, sessions, sets, metrics, loading } = store;
+  const { exercises, sessions, sets, metrics, loading } = store;
+  // Program days run on hidden routines; they're started from My program, not listed as your routines.
+  const routines = useMemo(() => store.routines.filter((r) => !isProgramRoutine(r)), [store.routines]);
   const [open, setOpen] = useState<Open>(null);
+  // Today's Start button starts the program day, then opens it here with ?session=.
+  const { session: opening } = useLocalSearchParams<{ session?: string }>();
+  useEffect(() => { if (opening) setOpen({ kind: 'session', id: opening }); }, [opening]);
   const today = localDate();
-  const { routine, session } = useMemo(() => todaysWorkout(routines, sessions, today), [routines, sessions, today]);
+  const { routine, session } = useMemo(() => todaysWorkout(store.routines, sessions, today), [store.routines, sessions, today]);
   const coach = workoutCoach({ routine, session, exercises, sets, sessions });
   const week = useMemo(() => weekStrip(routines, sessions, today), [routines, sessions, today]);
   const count = weekCount(week);
@@ -83,7 +90,7 @@ export function WorkoutsTab() {
         <WeekDots days={week} />
       </Card>
 
-      <ProgramCard />
+      <ProgramCard sessions={sessions} onStart={async (place, day) => { const s = await startProgramDay(place, day); if (s) setOpen({ kind: 'session', id: s.id }); }} />
 
       <StepsCard />
 

@@ -121,7 +121,7 @@ export default function HealthScreen() {
 
   return (
     <View style={styles.screen}>
-      <ScrollView ref={scroller} contentContainerStyle={{ paddingBottom: TAB_BAR_CLEARANCE }} keyboardShouldPersistTaps="handled">
+      <ScrollView ref={scroller} contentContainerStyle={{ paddingBottom: TAB_BAR_CLEARANCE + insets.bottom }} keyboardShouldPersistTaps="handled">
         <View style={{ backgroundColor: colors.inkBlue, borderBottomLeftRadius: 36, borderBottomRightRadius: 36, paddingTop: insets.top + space[4], paddingHorizontal: space[5], paddingBottom: 72, gap: space[3] }}>
           <View>
             <Text variant="small" weight="bold" style={{ color: colors.onInkBlue, letterSpacing: 1.3 }}>{new Date().toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' }).toUpperCase()}</Text>

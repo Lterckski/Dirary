@@ -2,15 +2,16 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import {
   WEEKDAY_NAME, WEEKDAY_SHORT, amountInTask, dayCoach, dayComplete, dayTotals, dayWins, dueLabel, fixedThisMonth, formatKcal, formatPeso, glassesOn, greeting,
-  localDate, planOf, routineMinutes, safeToSpend, taskWithoutAmount, todayView, todaysWorkout, topTasks, weekReview, weekStrip,
+  localDate, planOf, programOn, routineMinutes, safeToSpend, taskWithoutAmount, todayView, todaysWorkout, topTasks, weekReview, weekStrip,
   type DayWin, type Task,
 } from '@dirary/shared';
-import { ADD_KINDS, useAddTo } from '../addTo';
+import { ADD_KINDS, markDirection, useAddTo } from '../addTo';
 import { confettiFrom } from '../confetti';
 import { askForNudges, nudgePermission, planNudges } from '../inkNudges';
 import { Mascot } from '../Mascot';
 import { useHealth } from '../health/useHealth';
 import { useWorkouts } from '../health/useWorkouts';
+import { savedPlace } from './ProgramCard';
 import { useBillTasks } from '../links/useBillTasks';
 import { useWorkoutTasks } from '../links/useWorkoutTasks';
 import { useMoney } from '../money/useMoney';
@@ -65,7 +66,17 @@ export function Today() {
     routines: workouts.routines, sessions: workouts.sessions, day: today, today, toLocalDate: toLocal,
   }), [tasks.tasks, money.transactions, money.categories, health.logs, workouts.routines, workouts.sessions, today]);
 
-  const workoutName = workout.session?.name ?? workout.routine?.name ?? null;
+  // No routine or workout today: fall back to what My program has on this day.
+  const program = programOn(today);
+  const fromProgram = !workout.session && !workout.routine;
+  const workoutName = workout.session?.name ?? workout.routine?.name ?? (program.kind === 'lift' ? program.name : null);
+  async function startWorkoutTile() {
+    if (!fromProgram || program.kind !== 'lift') return addTo('workout');
+    const started = await workouts.startProgramDay(savedPlace(), program.day);
+    try { sessionStorage.setItem('dirary:health-tab', 'workouts'); } catch { /* private mode */ }
+    markDirection('/health');
+    navigate('/health', { viewTransition: true, state: { tab: 'workouts', ...(started ? { session: started.id } : {}) } });
+  }
   const input = {
     tasks: view, safe, fixed, food, goals: health.goals, hour,
     workout: { name: workoutName, done: !!workout.session?.done_at, started: !!workout.session?.started_at },
@@ -236,9 +247,10 @@ export function Today() {
               <h2 id="t-workout" className="card-label">Workout</h2>
               <span className="muted note amount-note">{week.workoutsDone} of {week.workoutsPlanned} this week</span>
             </div>
-            <p className={workout.session?.done_at ? 'display today-num done' : 'display today-num'}>{workoutName ?? 'Rest day'}</p>
+            <p className={workout.session?.done_at ? 'display today-num done' : 'display today-num'}>{workoutName ?? (program.kind === 'bjj' ? program.name : 'Rest day')}</p>
             <p className="note muted">
-              {workout.session?.done_at ? 'Done. Nice work.' : plan.length ? `${plan.length} exercise${plan.length === 1 ? '' : 's'} · about ${routineMinutes(plan)} min` : workout.session ? 'Under way' : 'Recovery counts too.'}
+              {fromProgram ? (program.kind === 'lift' ? `Day ${program.day} of My program · ${program.exercises} exercises` : program.note ?? 'Recovery counts too.')
+                : workout.session?.done_at ? 'Done. Nice work.' : plan.length ? `${plan.length} exercise${plan.length === 1 ? '' : 's'} · about ${routineMinutes(plan)} min` : workout.session ? 'Under way' : 'Recovery counts too.'}
             </p>
             <ol className="week small" aria-label="Workouts this week">
               {strip.map((d) => (
@@ -253,7 +265,7 @@ export function Today() {
             </ol>
             <div className="row card-foot">
               <span />
-              <button type="button" className={workoutName && !workout.session?.done_at ? 'btn small primary' : 'btn small'} onClick={() => addTo('workout')}>
+              <button type="button" className={workoutName && !workout.session?.done_at ? 'btn small primary' : 'btn small'} onClick={startWorkoutTile}>
                 {workout.session?.done_at || !workoutName ? 'Open Workouts' : workout.session?.started_at ? 'Continue' : 'Start'}
               </button>
             </div>

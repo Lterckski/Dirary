@@ -2,7 +2,7 @@ import { useCallback, useEffect, useState } from 'react';
 import {
   BODY_METRICS_TABLE, BODY_METRIC_COLUMNS, EXERCISES_TABLE, EXERCISE_COLUMNS, ROUTINES_TABLE, ROUTINE_COLUMNS, WORKOUT_SESSIONS_TABLE, WORKOUT_SESSION_COLUMNS,
   WORKOUT_SETS_TABLE, WORKOUT_SET_COLUMNS, BodyMetric, Exercise, Routine, WorkoutSession, WorkoutSet, addDays, localDate, planText, weekdaysOf, weekdayOf,
-  workoutSessionId, type PlanItem, type StarterExercise,
+  programWorkout, workoutSessionId, type PlanItem, type ProgramPlace, type StarterExercise,
 } from '@dirary/shared';
 import { supabase } from '../supabase';
 
@@ -136,6 +136,37 @@ export function useWorkouts() {
     return row;
   }, [save, updateSession]);
 
+  /**
+   * Starts (or continues) one lifting day of My program as today's workout. Its exercises and hidden routine have
+   * fixed ids (the same as on the phone), so they're made once and reused every week; the routine is refreshed if
+   * the program text changed. Waits for those rows before starting, since the workout and its sets point at them.
+   */
+  const startProgramDay = useCallback(async (place: ProgramPlace, day: number): Promise<WorkoutSession | null> => {
+    const w = programWorkout(place, day);
+    if (!w || !supabase) return null;
+    const stamp = now();
+    const newExercises: Exercise[] = w.exercises.filter((e) => !exercises.some((x) => x.id === e.id))
+      .map((e) => ({ id: e.id, name: e.name, muscle_group: null, starter_key: null, created_at: stamp, updated_at: stamp, deleted_at: null }));
+    if (newExercises.length) {
+      setExercises((all) => [...all, ...newExercises.filter((n) => !all.some((x) => x.id === n.id))]);
+      const { error: failed } = await supabase.from(EXERCISES_TABLE).upsert(newExercises, { onConflict: 'id', ignoreDuplicates: true });
+      if (failed) { setError(friendly(failed.message)); return null; }
+    }
+    const plan = planText(w.plan);
+    const had = routines.find((r) => r.id === w.routineId);
+    let routine: Routine = had ?? { id: w.routineId, name: w.name, plan, weekdays: '', sort_order: 1000 + day + (place === 'home' ? 10 : 0), created_at: stamp, updated_at: stamp, deleted_at: null };
+    if (!had || had.plan !== plan || had.name !== w.name || had.weekdays !== '') {
+      routine = { ...routine, name: w.name, plan, weekdays: '', updated_at: stamp };
+      const row = routine;
+      setRoutines((all) => [...all.filter((r) => r.id !== row.id), row]);
+      const { error: failed } = await supabase.from(ROUTINES_TABLE).upsert(row);
+      if (failed) { setError(friendly(failed.message)); return null; }
+    }
+    const today = localDate();
+    const existing = sessions.filter((s) => s.routine_id === routine.id && s.planned_date === today).sort((a, b) => Number(!!a.done_at) - Number(!!b.done_at))[0] ?? null;
+    return startWorkout(routine, existing);
+  }, [exercises, routines, sessions, startWorkout]);
+
   const logSet = useCallback((session: WorkoutSession, exerciseId: string, setIndex: number, weight_kg: number, reps: number) => {
     const stamp = now();
     const row: WorkoutSet = { id: crypto.randomUUID(), session_id: session.id, exercise_id: exerciseId, set_index: setIndex, weight_kg, reps, performed_at: stamp, created_at: stamp, updated_at: stamp, deleted_at: null };
@@ -153,7 +184,7 @@ export function useWorkouts() {
     return save(() => setMetrics((all) => [...all, row]), () => supabase!.from(BODY_METRICS_TABLE).insert(row));
   }, [save]);
 
-  return { exercises, routines, sessions, sets, metrics, loading, error, addExercise, saveRoutine, removeRoutine, addSessionsIfNew, updateSession, removeSessions, startWorkout, logSet, unlogSet, logWeight };
+  return { exercises, routines, sessions, sets, metrics, loading, error, addExercise, saveRoutine, removeRoutine, addSessionsIfNew, updateSession, removeSessions, startWorkout, startProgramDay, logSet, unlogSet, logWeight };
 }
 
 export type WorkoutsStore = ReturnType<typeof useWorkouts>;

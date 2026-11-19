@@ -3,6 +3,8 @@
  * It's a fixed plan to read from, not a Routine: rep ranges like 8–10 and notes like "feet on chair" don't fit a plan item.
  * Day 1 is Monday, so Day 7 (full rest) is Sunday.
  */
+import { stableUuid } from './links';
+import type { PlanItem, Routine } from './workouts';
 
 export type ProgramPlace = 'gym' | 'home';
 export type ProgramDayKind = 'lift' | 'bjj' | 'rest';
@@ -103,7 +105,7 @@ export const PROGRAM: Record<ProgramPlace, readonly ProgramDay[]> = {
       ex('Sliding Leg Curls', '3×12–15', 'Socks or towel on a smooth floor'),
       ex('Lateral Raises', '4×15–20', 'Bottles/backpack'),
       ex('Towel Ab Rollouts or Plank Walkouts', '3×10–12'),
-      ex('Manual-Resistance Neck Curls/Extensions + Backpack/Bag Carries', '2–3 sets each', 'Push against your own hand'),
+      ex('Manual Neck Curls/Extensions + Bag Carries', '2–3 sets each', 'Manual resistance: push against your own hand. Carry a backpack or bag'),
     ] },
     { day: 6, title: 'Hard BJJ', kind: 'bjj', note: 'Skip extra HIIT while cutting. If you miss BJJ, do 20 minutes of intervals: burpees, jump squats, mountain climbers or shadowboxing.', exercises: [] },
     REST,
@@ -129,3 +131,50 @@ export const programDayTitle = (d: Pick<ProgramDay, 'day' | 'title' | 'focus'>):
 
 /** "3×8–10" → "3 × 8–10", to match targetLabel elsewhere. */
 export const programTarget = (target: string): string => target.replace(/^(\d+(?:–\d+)?)×/, '$1 × ');
+
+// ---- starting a program day as a workout ----
+// Each lifting day becomes a hidden routine (no weekdays, so it never plans tasks) with a fixed id, and each
+// exercise gets a fixed id per place, so every device makes the same rows and history builds up across weeks.
+// Gym and home exercises are kept apart: bottle lateral raises shouldn't compare with dumbbell ones.
+
+export const programRoutineId = (place: ProgramPlace, day: number): string => stableUuid(`dirary-program-routine:${place}:${day}`);
+export const programExerciseId = (place: ProgramPlace, name: string): string => stableUuid(`dirary-program-exercise:${place}:${name.trim().toLowerCase()}`);
+
+const ROUTINE_IDS = new Set((['gym', 'home'] as const).flatMap((p) => PROGRAM[p].map((d) => programRoutineId(p, d.day))));
+/** The hidden routines behind program days, left out of the Routines list. */
+export const isProgramRoutine = (routine: Pick<Routine, 'id'>): boolean => ROUTINE_IDS.has(routine.id);
+
+/** "3×8–10" → 3 sets, aiming for 10; "3×max" or "2–3 sets each" → reps left open (null). */
+export function programSetsReps(target: string): { sets: number; reps: number | null } {
+  const m = /^(\d+)(?:–(\d+))?\s*(?:×\s*(\d+)(?:–(\d+))?)?/.exec(target);
+  if (!m) return { sets: 3, reps: null };
+  const sets = Math.min(20, Number(m[2] ?? m[1]));
+  const reps = m[3] ? Math.min(100, Number(m[4] ?? m[3])) : null;
+  return { sets, reps };
+}
+
+export interface ProgramWorkout {
+  routineId: string;
+  /** The workout's name: "Upper B (Pull)", or "Upper B (Pull) · Home". */
+  name: string;
+  exercises: { id: string; name: string }[];
+  plan: PlanItem[];
+}
+
+/** What starting a lifting day logs against; null for BJJ and rest days. */
+export function programWorkout(place: ProgramPlace, day: number): ProgramWorkout | null {
+  const d = PROGRAM[place].find((x) => x.day === day);
+  if (!d || d.kind !== 'lift') return null;
+  const exercises = d.exercises.map((e) => ({ id: programExerciseId(place, e.name), name: e.name.slice(0, 60) }));
+  // A day can't list the same exercise twice (plan items are keyed by exercise), so keep the first.
+  const plan: PlanItem[] = [];
+  d.exercises.forEach((e, i) => { const id = exercises[i]!.id; if (!plan.some((p) => p.exercise_id === id)) plan.push({ exercise_id: id, ...programSetsReps(e.target) }); });
+  const title = `${d.title}${d.focus ? ` (${d.focus})` : ''}`;
+  return { routineId: programRoutineId(place, day), name: place === 'home' ? `${title} · Home` : title, exercises, plan };
+}
+
+/** What the program has on a date, for screens that would otherwise say "Rest day": "Upper B (Pull)", "Hard BJJ", "Full rest". */
+export function programOn(date: string): { day: number; kind: ProgramDayKind; name: string; exercises: number; note: string | null } {
+  const d = PROGRAM.gym.find((x) => x.day === programDayOf(date))!;
+  return { day: d.day, kind: d.kind, name: `${d.title}${d.focus ? ` (${d.focus})` : ''}`, exercises: d.exercises.length, note: d.note ?? null };
+}

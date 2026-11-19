@@ -11,7 +11,7 @@ import { Path, Svg } from 'react-native-svg';
 import { colors, radius, space } from '@dirary/ui';
 import {
   amountInTask, dayCoach, dayComplete, dayTotals, dayWins, dueLabel, fixedThisMonth, formatKcal, formatPeso, glassesOn, greeting, localDate,
-  planOf, routineMinutes, safeToSpend, taskWithoutAmount, todayView, todaysWorkout, topTasks, weekReview, weekStrip,
+  planOf, programOn, routineMinutes, safeToSpend, taskWithoutAmount, todayView, todaysWorkout, topTasks, weekReview, weekStrip,
   type Account, type Category, type DayWin, type Task,
 } from '@dirary/shared';
 
@@ -30,7 +30,8 @@ import { useHealthStore } from '@/lib/health-store';
 import { useMoneyStore } from '@/lib/money-store';
 import { CHECKED_MS, ENTER, LEAVE } from '@/lib/motion';
 import { signOutAndClear, toggleTask, useTasksStore } from '@/lib/tasks-store';
-import { useWorkoutsStore } from '@/lib/workouts-store';
+import { startProgramDay, useWorkoutsStore } from '@/lib/workouts-store';
+import { readProgramPlace } from '@/components/program-card';
 
 const GREETING_NAME = 'Luther';
 const LABEL = { letterSpacing: 1.4, color: colors.muted } as const;
@@ -67,7 +68,15 @@ export default function TodayScreen() {
     routines: workouts.routines, sessions: workouts.sessions, day: today, today, toLocalDate: toLocal,
   }), [tasks.tasks, money.transactions, money.categories, health.logs, workouts.routines, workouts.sessions, today]);
 
-  const workoutName = workout.session?.name ?? workout.routine?.name ?? null;
+  // No routine or workout today: fall back to what My program has on this day.
+  const program = programOn(today);
+  const fromProgram = !workout.session && !workout.routine;
+  const workoutName = workout.session?.name ?? workout.routine?.name ?? (program.kind === 'lift' ? program.name : null);
+  async function startWorkoutTile() {
+    if (!fromProgram || program.kind !== 'lift') return addTo('workout');
+    const started = await startProgramDay(await readProgramPlace(), program.day);
+    router.navigate({ pathname: '/health', params: { tab: 'workouts', ...(started ? { session: started.id } : {}) } });
+  }
   const input = { tasks: view, safe, fixed, food, goals: health.goals, hour, workout: { name: workoutName, done: !!workout.session?.done_at, started: !!workout.session?.started_at } };
   const coach = dayCoach(input, pesos);
   const wins = dayWins(input, pesos);
@@ -250,13 +259,14 @@ export default function TodayScreen() {
               <Text variant="small" weight="bold" style={LABEL}>WORKOUT</Text>
               <Text variant="label" muted style={NUM}>{week.workoutsDone} of {week.workoutsPlanned} this week</Text>
             </View>
-            <Text variant="title" style={workout.session?.done_at ? { color: colors.inkBlue } : undefined}>{workoutName ?? 'Rest day'}</Text>
+            <Text variant="title" style={workout.session?.done_at ? { color: colors.inkBlue } : undefined}>{workoutName ?? (program.kind === 'bjj' ? program.name : 'Rest day')}</Text>
             <Text variant="label" muted>
-              {workout.session?.done_at ? 'Done. Nice work.' : plan.length ? `${plan.length} exercise${plan.length === 1 ? '' : 's'} · about ${routineMinutes(plan)} min` : workout.session ? 'Under way' : 'Recovery counts too.'}
+              {fromProgram ? (program.kind === 'lift' ? `Day ${program.day} of My program · ${program.exercises} exercises` : program.note ?? 'Recovery counts too.')
+                : workout.session?.done_at ? 'Done. Nice work.' : plan.length ? `${plan.length} exercise${plan.length === 1 ? '' : 's'} · about ${routineMinutes(plan)} min` : workout.session ? 'Under way' : 'Recovery counts too.'}
             </Text>
             <WeekDots days={strip} size={30} />
             <View style={{ alignItems: 'flex-end' }}>
-              <Button primary={!!workoutName && !workout.session?.done_at} label={workout.session?.done_at || !workoutName ? 'Open Workouts' : workout.session?.started_at ? 'Continue' : 'Start'} onPress={() => addTo('workout')} />
+              <Button primary={!!workoutName && !workout.session?.done_at} label={workout.session?.done_at || !workoutName ? 'Open Workouts' : workout.session?.started_at ? 'Continue' : 'Start'} onPress={startWorkoutTile} />
             </View>
           </Card>
 
