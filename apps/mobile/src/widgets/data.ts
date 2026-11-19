@@ -5,6 +5,8 @@ import { todaysSteps } from '@/lib/steps';
 export interface WidgetData {
   /** Overdue first, then due today. */
   open: Task[];
+  /** Tasks just ticked off on a widget: still listed, shown checked, for a moment before they go. */
+  justDone: string[];
   done: number;
   total: number;
   mood: InkMood;
@@ -68,7 +70,7 @@ export async function widgetData(): Promise<WidgetData> {
   const steps = await within(3000, todaysSteps().then((s) => (s.kind === 'ok' ? s.steps : null)), null).catch(() => null);
 
   return {
-    open: [...view.overdue, ...view.dueToday], done: view.done, total: view.total, mood: coach.mood, line: coach.line,
+    ...withJustTicked([...view.overdue, ...view.dueToday], coach.mood, coach.line), done: view.done, total: view.total,
     spentToday: spentOn(transactions, today, toLocal),
     budgetLeft: month.budgeted > 0 ? month.budgeted - month.budgetSpent : null,
     moneyMood: budgetCoach(month, now.getDate(), daysInMonth).mood,
@@ -94,7 +96,7 @@ export function within<T>(ms: number, work: Promise<T>, fallback: T): Promise<T>
 
 /** What a widget shows when the phone's data can't be read: an empty day, so it still draws. */
 export const EMPTY_WIDGET_DATA: WidgetData = {
-  open: [], done: 0, total: 0, mood: 'happy', line: 'Open Dirary to load your day.',
+  open: [], justDone: [], done: 0, total: 0, mood: 'happy', line: 'Open Dirary to load your day.',
   spentToday: 0, budgetLeft: null, moneyMood: 'happy',
   kcalEaten: 0, proteinEaten: 0, kcalTarget: null, proteinTarget: null, foodMood: 'happy',
   water: 0, waterGoal: 8,
@@ -105,4 +107,22 @@ export const EMPTY_WIDGET_DATA: WidgetData = {
 /** widgetData, but never throws and never takes more than 10 seconds, so a widget always draws. */
 export async function safeWidgetData(): Promise<WidgetData> {
   return within(10_000, widgetData(), EMPTY_WIDGET_DATA).catch(() => EMPTY_WIDGET_DATA);
+}
+
+/** How long a task ticked on a widget stays on it, checked, before it leaves the list. */
+export const TICK_HOLD_MS = 1600;
+const ticked = new Map<string, { task: Task; index: number; until: number }>();
+
+/** Call just before ticking a task on a widget, with where it sits in the list. */
+export function holdTicked(task: Task, index: number): void {
+  ticked.set(task.id, { task, index, until: Date.now() + TICK_HOLD_MS });
+}
+
+function withJustTicked(open: Task[], mood: InkMood, line: string): { open: Task[]; justDone: string[]; mood: InkMood; line: string } {
+  const now = Date.now();
+  for (const [id, t] of ticked) if (t.until <= now) ticked.delete(id);
+  if (ticked.size === 0) return { open, justDone: [], mood, line };
+  const list = open.filter((t) => !ticked.has(t.id));
+  for (const t of [...ticked.values()].sort((a, b) => a.index - b.index)) list.splice(Math.min(t.index, list.length), 0, t.task);
+  return { open: list, justDone: [...ticked.keys()], mood: 'cheer', line: 'Nice! One down.' };
 }

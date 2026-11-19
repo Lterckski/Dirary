@@ -1,9 +1,10 @@
+import { Vibration } from 'react-native';
 import type { WidgetTaskHandlerProps } from 'react-native-android-widget';
 import { localDate } from '@dirary/shared';
 import { readTasks, readWater } from '@/lib/db';
 import { tapWater } from '@/lib/health-store';
 import { syncTasks, toggleTask } from '@/lib/tasks-store';
-import { safeWidgetData, within } from './data';
+import { TICK_HOLD_MS, holdTicked, safeWidgetData, within } from './data';
 import { describe, logWidget } from './log';
 import { WIDGETS, refreshNudgesFrom, type WidgetName } from './refresh';
 
@@ -29,8 +30,17 @@ async function handle(props: WidgetTaskHandlerProps, Widget: (typeof WIDGETS)[Wi
       const id = props.clickActionData?.id;
       if (props.clickAction === 'TOGGLE_TASK' && typeof id === 'string') {
         const task = (await readTasks()).find((t) => t.id === id);
-        // toggleTask saves on the phone, redraws all widgets, reschedules reminders and syncs.
-        if (task) await toggleTask(task);
+        if (task && task.status === 'todo') {
+          // Widgets can't animate, so the tick shows at once (checked box, Ink cheering, a buzz), stays for
+          // a moment, and then the task leaves the list.
+          const before = await safeWidgetData();
+          holdTicked(task, Math.max(0, before.open.findIndex((t) => t.id === id)));
+          Vibration.vibrate(18);
+          props.renderWidget(<Widget data={await safeWidgetData()} />);
+          // toggleTask saves on the phone, redraws all widgets, reschedules reminders and syncs.
+          await toggleTask(task);
+          await new Promise((r) => setTimeout(r, TICK_HOLD_MS));
+        } else if (task) await toggleTask(task);
       }
       if (props.clickAction === 'ADD_WATER') {
         const today = localDate();

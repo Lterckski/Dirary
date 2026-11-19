@@ -44,19 +44,27 @@ export function TodayTasksWidget({ data }: { data: WidgetData }) {
           <TextWidget text={data.line} maxLines={2} truncate="END" style={{ fontSize: 14, color: colors.muted }} />
         </FlexWidget>
       ) : (
-        rows.map((task) => (
-          <FlexWidget key={task.id} style={{ width: 'match_parent', flexDirection: 'row', alignItems: 'center', flexGap: 10 }}>
-            <FlexWidget
-              clickAction="TOGGLE_TASK" clickActionData={{ id: task.id }}
-              style={{ width: 32, height: 32, alignItems: 'center', justifyContent: 'center' }}>
-              <FlexWidget style={{ width: 22, height: 22, borderRadius: 7, borderWidth: 2, borderColor: (EDGE[task.priority] ?? colors.inkBlue) as `#${string}` }} />
+        rows.map((task) => {
+          // Just ticked: a filled box with a check and a dimmed title, held for a moment before it goes.
+          const done = data.justDone.includes(task.id);
+          const edge = (EDGE[task.priority] ?? colors.inkBlue) as `#${string}`;
+          return (
+            <FlexWidget key={task.id} style={{ width: 'match_parent', flexDirection: 'row', alignItems: 'center', flexGap: 10 }}>
+              <FlexWidget
+                clickAction="TOGGLE_TASK" clickActionData={{ id: task.id }}
+                style={{ width: 32, height: 32, alignItems: 'center', justifyContent: 'center' }}>
+                <FlexWidget style={{ width: 22, height: 22, borderRadius: 7, borderWidth: 2, borderColor: done ? colors.inkBlue : edge, ...(done ? { backgroundColor: colors.inkBlue } : {}), alignItems: 'center', justifyContent: 'center' }}>
+                  {done ? <TextWidget text="✓" style={{ fontSize: 14, fontWeight: '800', color: colors.onInkBlue }} /> : null}
+                </FlexWidget>
+              </FlexWidget>
+              <FlexWidget style={{ flex: 1 }}>
+                <TextWidget text={task.title} maxLines={1} truncate="END" style={{ fontSize: 14, fontWeight: '600', color: done ? colors.faint : colors.text }} />
+              </FlexWidget>
+              {done ? <TextWidget text="Done" style={{ fontSize: 12, fontWeight: '700', color: colors.inkBlue }} />
+                : task.due_time ? <TextWidget text={timeLabel(task.due_time)} style={{ fontSize: 12, fontWeight: '600', color: colors.muted }} /> : null}
             </FlexWidget>
-            <FlexWidget style={{ flex: 1 }}>
-              <TextWidget text={task.title} maxLines={1} truncate="END" style={{ fontSize: 14, fontWeight: '600', color: colors.text }} />
-            </FlexWidget>
-            {task.due_time ? <TextWidget text={timeLabel(task.due_time)} style={{ fontSize: 12, fontWeight: '600', color: colors.muted }} /> : null}
-          </FlexWidget>
-        ))
+          );
+        })
       )}
       {more > 0 ? <TextWidget text={`+${more} more`} style={{ fontSize: 12, color: colors.muted }} /> : null}
     </FlexWidget>
