@@ -8,6 +8,7 @@ import * as Notifications from 'expo-notifications';
 import { router } from 'expo-router';
 import { Platform } from 'react-native';
 import { colors } from '@dirary/ui';
+import { readTasks } from './db';
 import { comebackNudges, dayNudges, inkNote, localDate, reminderDue, SNOOZE_MINUTES, type DayNudgeInput, type PlannedNudge, type Task } from '@dirary/shared';
 
 /** Android fixes a channel's sound when it is made, so the bark needs its own channel. */
@@ -102,8 +103,25 @@ async function schedule(nudges: readonly PlannedNudge[], url: string) {
   }
 }
 
-/** Replaces every scheduled reminder with the current set. Cheap enough to run after each change. */
-export async function refreshReminders(tasks: readonly Task[]): Promise<void> {
+let refreshing: Promise<void> = Promise.resolve();
+let latest: readonly Task[] | null = null;
+
+/**
+ * Replaces every scheduled reminder with the current set. Cheap enough to run after each change.
+ * Runs one at a time with the newest tasks: two overlapping runs could otherwise let an older list
+ * (with a task still to do) schedule its reminder after a newer one (with it ticked off) cancelled it.
+ */
+export function refreshReminders(tasks: readonly Task[]): Promise<void> {
+  latest = tasks;
+  refreshing = refreshing.then(async () => {
+    const next = latest;
+    latest = null;
+    if (next) await replaceReminders(next);
+  }).catch(() => {});
+  return refreshing;
+}
+
+async function replaceReminders(tasks: readonly Task[]): Promise<void> {
   if (!(await hasReminderPermission())) return;
   await ensureChannel();
   const now = new Date();
@@ -122,6 +140,11 @@ export async function refreshReminders(tasks: readonly Task[]): Promise<void> {
     if (scheduled.identifier.startsWith('snooze-') && !open.has(scheduled.identifier.slice('snooze-'.length))) {
       await Notifications.cancelScheduledNotificationAsync(scheduled.identifier);
     }
+  }
+  // And a reminder already showing for a task that's now done or deleted is taken down.
+  for (const shown of await Notifications.getPresentedNotificationsAsync().catch(() => [])) {
+    const taskId = shown.request.content.data?.taskId;
+    if (typeof taskId === 'string' && !open.has(taskId)) await Notifications.dismissNotificationAsync(shown.request.identifier).catch(() => {});
   }
   for (const { task, at } of due) {
     const note = inkNote('task', { task: task.title }, `${task.id}:${task.remind_at}`);
@@ -196,6 +219,9 @@ export async function handleReminderAction(response: Notifications.NotificationR
     await Notifications.cancelScheduledNotificationAsync(snoozeId).catch(() => {});
     return;
   }
+  // A press can arrive late (Android replays it when the app opens), so never snooze a task that's done.
+  const task = (await readTasks().catch(() => [] as Task[])).find((t) => t.id === taskId);
+  if (!task || task.status !== 'todo') return;
   await ensureChannel();
   const { title, body } = notification.request.content;
   await Notifications.scheduleNotificationAsync({

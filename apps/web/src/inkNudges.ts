@@ -74,6 +74,19 @@ export function snoozeReminder(taskId: string) {
   snoozes.set(taskId, window.setTimeout(() => { snoozes.delete(taskId); ring(reminder); }, SNOOZE_MINUTES * 60_000));
 }
 
+/**
+ * Drops every reminder of a task that is done or deleted: the one still to come, one that went off,
+ * and a snooze. Runs whenever the task list changes, from any page.
+ */
+export function forgetClosedTasks(tasks: readonly Task[]) {
+  const open = new Set(tasks.filter((t) => t.status === 'todo' && t.deleted_at === null).map((t) => t.id));
+  for (const [key, id] of timers) {
+    if (key.startsWith('task-') && !open.has(key.slice('task-'.length))) { window.clearTimeout(id); timers.delete(key); }
+  }
+  for (const r of ringing) if (!open.has(r.taskId)) cancelReminder(r.taskId);
+  for (const id of [...snoozes.keys()]) if (!open.has(id)) cancelReminder(id);
+}
+
 /** Clears a reminder that went off, and any snooze of it. */
 export function cancelReminder(taskId: string) {
   setRinging(ringing.filter((r) => r.taskId !== taskId));
@@ -89,10 +102,7 @@ export function cancelReminder(taskId: string) {
 export function planNudges(tasks: readonly Task[], day: Omit<DayNudgeInput, 'now'>) {
   for (const id of timers.values()) window.clearTimeout(id);
   timers.clear();
-  // A reminder that went off or was snoozed goes away once its task is done or deleted.
-  const open = new Set(tasks.filter((t) => t.status === 'todo' && t.deleted_at === null).map((t) => t.id));
-  for (const r of ringing) if (!open.has(r.taskId)) cancelReminder(r.taskId);
-  for (const id of [...snoozes.keys()]) if (!open.has(id)) cancelReminder(id);
+  forgetClosedTasks(tasks);
   if (nudgePermission() !== 'granted') return;
   const now = Date.now();
   const at = (key: string, when: number, fire: () => void) => {
