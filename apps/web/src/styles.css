@@ -745,3 +745,58 @@ input[type='date'].input, input[type='time'].input { cursor: pointer; }
 .reminder-card .chips { grid-column: 1 / -1; }
 .reminder-text { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
 @media (max-width: 720px) { .reminder-bar { right: 16px; bottom: 96px; } }
+
+/* ---- Ink's idle animations: one per mood, pivoting at her feet. Moves are in % of her size. ---- */
+@keyframes ink-idle-happy { /* a curious head tilt one way, then the other */
+  0%, 100% { transform: none; }
+  12% { transform: translateY(-1.5%) rotate(-4deg); }
+  22% { transform: translateY(-1.5%) rotate(-4deg); }
+  36% { transform: rotate(3.5deg); }
+  44% { transform: rotate(3.5deg); }
+  54% { transform: none; }
+}
+@keyframes ink-idle-coach { /* two quick nods, then a thoughtful tilt */
+  0%, 100% { transform: none; }
+  3% { transform: translateY(2%); }
+  6.5% { transform: none; }
+  9.5% { transform: translateY(2%); }
+  14% { transform: none; }
+  33% { transform: none; }
+  42% { transform: rotate(-2.5deg); }
+  55% { transform: rotate(-2.5deg); }
+  64% { transform: none; }
+}
+@keyframes ink-idle-cheer { /* happy bounces and a wiggle, like a wagging tail */
+  0%, 100% { transform: none; }
+  8% { transform: translateY(-6%); animation-timing-function: ease-in; }
+  16% { transform: scale(1.03, 0.97); }
+  22% { transform: translateY(-4%); animation-timing-function: ease-in; }
+  29% { transform: none; }
+  34% { transform: rotate(4deg); }
+  40% { transform: rotate(-4deg); }
+  45% { transform: rotate(3deg); }
+  50% { transform: none; }
+}
+@keyframes ink-idle-sleepy { /* slow, deep breaths with a drowsy lean */
+  0%, 100% { transform: none; }
+  45% { transform: scale(1.035) rotate(-1.5deg); }
+}
+@keyframes ink-idle-worried { /* a nervous fidget, then a hopeful tilt */
+  0%, 100% { transform: none; }
+  2% { transform: translateX(-1.5%); }
+  4% { transform: translateX(1.5%); }
+  6% { transform: translateX(-1%); }
+  8% { transform: none; }
+  36% { transform: none; }
+  48% { transform: rotate(3deg); }
+  64% { transform: rotate(3deg); }
+  76% { transform: none; }
+}
+@media (prefers-reduced-motion: no-preference) {
+  .ink { transform-origin: 50% 100%; animation-timing-function: ease-in-out; animation-iteration-count: infinite; }
+  .ink-happy { animation-name: ink-idle-happy; animation-duration: 5.2s; }
+  .ink-coach { animation-name: ink-idle-coach; animation-duration: 5.6s; }
+  .ink-cheer { animation-name: ink-idle-cheer; animation-duration: 2.6s; }
+  .ink-sleepy { animation-name: ink-idle-sleepy; animation-duration: 4.8s; }
+  .ink-worried { animation-name: ink-idle-worried; animation-duration: 5s; }
+}
