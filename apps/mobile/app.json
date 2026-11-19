@@ -31,7 +31,7 @@
           "sounds": [
             "./assets/sounds/bark.wav"
           ],
-          "defaultChannel": "ink-bark"
+          "defaultChannel": "ink-bark-2"
         }
       ],
       [

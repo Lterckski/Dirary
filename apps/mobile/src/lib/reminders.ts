@@ -11,8 +11,8 @@ import { colors } from '@dirary/ui';
 import { comebackNudges, dayNudges, inkNote, localDate, type DayNudgeInput, type PlannedNudge, type Task } from '@dirary/shared';
 
 /** Android fixes a channel's sound when it is made, so the bark needs its own channel. */
-const CHANNEL = 'ink-bark';
-const OLD_CHANNELS = ['task-reminders'];
+const CHANNEL = 'ink-bark-2';
+const OLD_CHANNELS = ['task-reminders', 'ink-bark'];
 /** The file listed under `sounds` in the expo-notifications plugin in app.json. */
 const BARK = 'bark.wav';
 /** Android limits how many alarms an app may hold; the soonest ones matter most. */
