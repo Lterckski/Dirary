@@ -1,3 +1,7 @@
+// The React Compiler (on for the whole app in app.json) rewrites components in a way the widget library
+// can't draw, which left every home-screen widget blank. Widgets are plain functions, so opt them out.
+'use no memo';
+
 import { FlexWidget, ImageWidget, TextWidget } from 'react-native-android-widget';
 import { colors } from '@dirary/ui';
 import { formatKcal, formatPeso, timeLabel } from '@dirary/shared';
