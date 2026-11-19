@@ -3,7 +3,7 @@
  * shown as browser notifications. A web page can only do this while Dirary is open in a tab (no server
  * push), so the phone stays the main place for reminders.
  */
-import { dayNudges, inkNote, type DayNudgeInput, type Task } from '@dirary/shared';
+import { dayNudges, inkNote, reminderDue, type DayNudgeInput, type Task } from '@dirary/shared';
 
 const ICON = '/ink/ink-badge.png';
 const BARK = '/sounds/bark.wav';
@@ -57,9 +57,10 @@ export function planNudges(tasks: readonly Task[], day: Omit<DayNudgeInput, 'now
     timers.set(key, window.setTimeout(() => { timers.delete(key); show(title, body, url); }, wait));
   };
   for (const task of tasks) {
-    if (task.status !== 'todo' || task.deleted_at !== null || !task.remind_at) continue;
+    const when = task.status === 'todo' && task.deleted_at === null ? reminderDue(task, new Date(now)) : null;
+    if (!when) continue;
     const note = inkNote('task', { task: task.title }, `${task.id}:${task.remind_at}`);
-    at(`task-${task.id}`, Date.parse(task.remind_at), note.title, note.body, '/tasks');
+    at(`task-${task.id}`, when.getTime(), note.title, note.body, '/tasks');
   }
   for (const n of dayNudges({ ...day, now: new Date(now) })) at(n.id, n.at.getTime(), n.note.title, n.note.body, '/');
 }

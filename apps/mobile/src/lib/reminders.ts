@@ -8,7 +8,7 @@ import * as Notifications from 'expo-notifications';
 import { router } from 'expo-router';
 import { Platform } from 'react-native';
 import { colors } from '@dirary/ui';
-import { comebackNudges, dayNudges, inkNote, localDate, type DayNudgeInput, type PlannedNudge, type Task } from '@dirary/shared';
+import { comebackNudges, dayNudges, inkNote, localDate, reminderDue, type DayNudgeInput, type PlannedNudge, type Task } from '@dirary/shared';
 
 /** Android fixes a channel's sound when it is made, so the bark needs its own channel. */
 const CHANNEL = 'ink-bark-2';
@@ -93,21 +93,23 @@ async function schedule(nudges: readonly PlannedNudge[], url: string) {
 export async function refreshReminders(tasks: readonly Task[]): Promise<void> {
   if (!(await hasReminderPermission())) return;
   await ensureChannel();
-  const now = Date.now();
+  const now = new Date();
   const due = tasks
-    .filter((t) => t.status === 'todo' && t.deleted_at === null && t.remind_at !== null && Date.parse(t.remind_at) > now)
-    .sort((a, b) => Date.parse(a.remind_at as string) - Date.parse(b.remind_at as string))
+    .filter((t) => t.status === 'todo' && t.deleted_at === null)
+    .map((task) => ({ task, at: reminderDue(task, now) }))
+    .filter((r): r is { task: Task; at: Date } => r.at !== null)
+    .sort((a, b) => a.at.getTime() - b.at.getTime())
     .slice(0, MAX_SCHEDULED);
 
   // Only task reminders are replaced; the rest timer and Ink's nudges stay.
   await cancelPrefixed('task-');
-  for (const task of due) {
+  for (const { task, at } of due) {
     const note = inkNote('task', { task: task.title }, `${task.id}:${task.remind_at}`);
     await Notifications.scheduleNotificationAsync({
       identifier: `task-${task.id}`,
       content: content(note.title, note.body, { taskId: task.id, url: '/tasks' }),
       // An alarm clock alarm is never deferred to save battery, so the reminder rings on the minute.
-      trigger: { type: Notifications.SchedulableTriggerInputTypes.DATE, date: new Date(task.remind_at as string), channelId: CHANNEL, delivery: 'alarmClock' },
+      trigger: { type: Notifications.SchedulableTriggerInputTypes.DATE, date: at, channelId: CHANNEL, delivery: 'alarmClock' },
     });
   }
 }
