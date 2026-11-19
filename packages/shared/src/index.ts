@@ -22,3 +22,4 @@ export * from './workouts';
 export * from './workoutLinks';
 export * from './day';
 export * from './inkVoice';
+export * from './program';

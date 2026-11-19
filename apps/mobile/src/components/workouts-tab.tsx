@@ -1,4 +1,4 @@
-/** Health → Workouts on the phone: today's workout, the week, steps, progress and routines. */
+/** Health → Workouts on the phone: today's workout, the week, your program (gym or home), steps, progress and routines. */
 import { useMemo, useState } from 'react';
 import { TextInput, View } from 'react-native';
 import { Press } from '@/components/press';
@@ -18,6 +18,7 @@ import { WeekDots } from '@/components/week-dots';
 import { WorkoutSessionScreen } from '@/components/workout-session';
 import { StepsCard } from '@/components/steps-card';
 import { ExercisePicker } from '@/components/exercise-picker';
+import { ProgramCard } from '@/components/program-card';
 import { addExercise, logWeight, removeRoutine, saveRoutine, startWorkout, useWorkoutsStore } from '@/lib/workouts-store';
 
 const LABEL = { letterSpacing: 1.4, color: colors.muted } as const;
@@ -81,6 +82,8 @@ export function WorkoutsTab() {
         </View>
         <WeekDots days={week} />
       </Card>
+
+      <ProgramCard />
 
       <StepsCard />
 
