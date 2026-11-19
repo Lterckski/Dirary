@@ -112,6 +112,5 @@ save(framed('happy',1024,None,fill=0.80),'apps/mobile/assets/images/android-icon
 save(Image.new('RGB',(1024,1024),BLUE[:3]),'apps/mobile/assets/images/android-icon-background.png')
 save(framed('happy',512,None,fill=1.0),'apps/mobile/assets/images/splash-icon.png')
 save(framed('happy',192,'circle'),'apps/web/public/favicon.png')
-save(framed('happy',256,'circle'),'apps/mobile/assets/notifications/ink-large.png')
 for name,m,shape in [('today-tasks','happy','circle'),('ink-progress','cheer','round'),('today-spend','coach','round'),('food-today','cheer','circle'),('workout-today','coach','circle'),('day','happy','circle')]:
     save(framed(m,400,shape),f'apps/mobile/assets/widgets/{name}-preview.png')
