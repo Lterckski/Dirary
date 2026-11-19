@@ -1,6 +1,5 @@
 import { useState, type CSSProperties } from 'react';
 import { PROGRAM, PROGRAM_PLACE_LABEL, PROGRESSION, localDate, programDayOf, programDayTitle, programRoutineId, programTarget, type ProgramPlace, type WorkoutSession } from '@dirary/shared';
-import { Mascot } from '../Mascot';
 
 const PLACE_KEY = 'dirary.programPlace';
 const PLACES = ['gym', 'home'] as const;
@@ -62,7 +61,6 @@ export function ProgramCard({ sessions, onStart }: { sessions: readonly WorkoutS
         )}
         {shown.note && (
           <div className="coach">
-            <span className="coach-badge"><Mascot mood={shown.kind === 'rest' ? 'sleepy' : 'coach'} size={52} /></span>
             <p>{shown.note}</p>
           </div>
         )}

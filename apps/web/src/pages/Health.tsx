@@ -143,7 +143,6 @@ export function Health() {
                   </div>
                 </div>
                 <div className="coach">
-                  <span className="coach-badge"><Mascot mood={coach.mood} size={52} /></span>
                   <p aria-live="polite">{coach.line}</p>
                 </div>
                 {!goals?.kcal_target && !goals?.protein_target_g && <button type="button" className="btn primary" style={{ alignSelf: 'flex-start' }} onClick={() => setDialog({ kind: 'goals' })}>Set daily targets</button>}

@@ -12,7 +12,6 @@ import {
   type Exercise, type PlanItem, type ProgressPoint, type Routine, type StarterExercise, type WorkoutSession,
 } from '@dirary/shared';
 
-import { Mascot } from '@/components/mascot';
 import { Chip } from '@/components/task-bits';
 import { Field, Sheet, Wrap } from '@/components/task-editor';
 import { Button, Card, Text, styles } from '@/components/ui';
@@ -77,7 +76,6 @@ export function WorkoutsTab() {
           </Wrap>
         )}
         <View style={styles.row}>
-          <View style={{ width: 56, height: 56, borderRadius: 28, backgroundColor: colors.inkBlue, alignItems: 'center', justifyContent: 'center' }}><Mascot mood={coach.mood} size={48} /></View>
           <Text style={{ flex: 1 }} accessibilityLiveRegion="polite">{coach.line}</Text>
         </View>
       </Card>

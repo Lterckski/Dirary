@@ -250,9 +250,6 @@ export default function MoneyScreen() {
             </>
           )}
           <View style={styles.row}>
-            <View style={{ width: 60, height: 60, borderRadius: 30, backgroundColor: colors.inkBlue, alignItems: 'center', justifyContent: 'center' }}>
-              <Mascot mood={coach.mood} size={52} />
-            </View>
             <Text style={{ flex: 1 }} accessibilityLiveRegion="polite">{coach.line}</Text>
           </View>
         </Card>
@@ -272,9 +269,6 @@ export default function MoneyScreen() {
           </ScrollView>
           <View style={{ marginTop: -28, padding: space[6], borderRadius: 28, borderWidth: 1, borderColor: colors.line, backgroundColor: colors.raised, overflow: 'hidden', gap: 6 }}>
             <View pointerEvents="none" style={{ position: 'absolute', top: 9, left: 9, right: 9, bottom: 9, borderRadius: 20, borderWidth: 1.5, borderStyle: 'dashed', borderColor: colors.line }} />
-            <View pointerEvents="none" accessibilityElementsHidden importantForAccessibility="no-hide-descendants" style={{ position: 'absolute', right: -14, bottom: -22, opacity: 0.13 }}>
-              <Mascot mood="happy" size={132} />
-            </View>
             <Text variant="small" weight="bold" style={LABEL}>{stash.stashed > 0 ? 'SPENDABLE' : 'BALANCE'}</Text>
             <View>
               <Text variant="title" style={NUM} adjustsFontSizeToFit numberOfLines={1}>{formatPeso(stash.stashed > 0 ? stash.spendable : stash.total)}</Text>
@@ -473,7 +467,6 @@ export default function MoneyScreen() {
           <Text variant="label" muted>No transactions in {shown.name} yet. Its balance is the opening balance, {formatPeso(shown.opening_balance_centavos)}.</Text>
         ) : days.length === 0 ? (
           <Card style={{ alignItems: 'center', paddingVertical: space[8] }}>
-            <Mascot mood="sleepy" size={128} />
             <Text muted style={{ textAlign: 'center' }}>No transactions yet. Add one above.</Text>
           </Card>
         ) : days.map((d) => (

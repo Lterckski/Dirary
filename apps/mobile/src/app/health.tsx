@@ -167,9 +167,6 @@ export default function HealthScreen() {
                 </View>
               </View>
               <View style={styles.row}>
-                <View style={{ width: 56, height: 56, borderRadius: 28, backgroundColor: colors.inkBlue, alignItems: 'center', justifyContent: 'center' }}>
-                  <Mascot mood={coach.mood} size={48} />
-                </View>
                 <Text style={{ flex: 1 }} accessibilityLiveRegion="polite">{coach.line}</Text>
               </View>
               {!goals?.kcal_target && !goals?.protein_target_g && <View style={styles.row}><Button primary label="Set daily targets" onPress={() => setOpen({ kind: 'goals' })} /></View>}

@@ -6,7 +6,6 @@ import Animated from 'react-native-reanimated';
 import { colors, space } from '@dirary/ui';
 import { PROGRAM, PROGRAM_PLACE_LABEL, PROGRESSION, localDate, programDayOf, programDayTitle, programRoutineId, programTarget, type ProgramPlace, type WorkoutSession } from '@dirary/shared';
 
-import { Mascot } from '@/components/mascot';
 import { Segmented } from '@/components/motion-bits';
 import { Press } from '@/components/press';
 import { Button, Card, Text, styles } from '@/components/ui';
@@ -91,9 +90,6 @@ export function ProgramCard({ sessions, onStart }: { sessions: readonly WorkoutS
         )}
         {shown.note && (
           <View style={styles.row}>
-            <View style={{ width: 56, height: 56, borderRadius: 28, backgroundColor: colors.inkBlue, alignItems: 'center', justifyContent: 'center' }}>
-              <Mascot mood={shown.kind === 'rest' ? 'sleepy' : 'coach'} size={48} />
-            </View>
             <Text style={{ flex: 1 }}>{shown.note}</Text>
           </View>
         )}

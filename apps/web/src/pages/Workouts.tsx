@@ -78,7 +78,6 @@ export function WorkoutsTab() {
               </div>
             )}
             <div className="coach">
-              <span className="coach-badge"><Mascot mood={coach.mood} size={52} /></span>
               <p aria-live="polite">{coach.line}</p>
             </div>
           </section>
