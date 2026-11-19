@@ -6,60 +6,34 @@ import { FlexWidget, ImageWidget, TextWidget } from 'react-native-android-widget
 import { colors } from '@dirary/ui';
 import { formatKcal, formatPeso, timeLabel, type Task } from '@dirary/shared';
 import type { WidgetData } from './data';
-import { EDGE, INK, Ring, TickBox, accent, big, glowCard, label, strong } from './glow';
+import { EDGE, INK, Ring, RoundButton, TickBox, accent, big, glowCard, label, strong } from './glow';
 
 const MAX_ROWS = 4;
 
-/** 4×2 widget: today's tasks, tick-off without opening the app, and a + button. */
+/** 4×2 widget: today's tasks, tick-off without opening the app, and a + button. Ink's ring fills as tasks get done. */
 export function TodayTasksWidget({ data }: { data: WidgetData }) {
   const rows = data.open.slice(0, MAX_ROWS);
   const more = data.open.length - rows.length;
+  const left = data.open.length - data.justDone.length;
   return (
-    <FlexWidget
-      clickAction="OPEN_URI" clickActionData={{ uri: 'dirary://tasks' }}
-      style={{ height: 'match_parent', width: 'match_parent', flexDirection: 'column', backgroundColor: colors.surface, borderRadius: 28, padding: 14, flexGap: 6 }}>
+    <FlexWidget clickAction="OPEN_URI" clickActionData={{ uri: 'dirary://tasks' }} style={{ ...glowCard('tasks', 14), flexGap: 6 }}>
       <FlexWidget style={{ width: 'match_parent', flexDirection: 'row', alignItems: 'center', flexGap: 10 }}>
-        <FlexWidget style={{ width: 36, height: 36, borderRadius: 18, backgroundColor: colors.inkBlue, alignItems: 'center', justifyContent: 'center' }}>
+        <Ring size={44} stroke={5} pct={data.total ? data.done / data.total : 0} color={colors.inkBlue}>
           <ImageWidget image={INK[data.mood]} imageWidth={32} imageHeight={32} />
+        </Ring>
+        <FlexWidget style={{ flex: 1, flexDirection: 'row', alignItems: 'flex-end', flexGap: 6 }}>
+          <TextWidget text={left > 0 ? `${left} left` : data.total > 0 ? 'All done' : 'Today'} maxLines={1} style={big(22)} />
+          {data.total > 0 ? <TextWidget text={`· ${data.done} done`} maxLines={1} style={label(12)} /> : null}
         </FlexWidget>
-        <FlexWidget style={{ flex: 1 }}>
-          <TextWidget text={data.open.length > 0 ? `Today · ${data.open.length} left` : data.total > 0 ? 'Today · all done' : 'Today'} maxLines={1} truncate="END" style={{ fontSize: 17, fontWeight: '800', color: colors.text }} />
-        </FlexWidget>
-        <FlexWidget
-          clickAction="OPEN_URI" clickActionData={{ uri: 'dirary://tasks?add=1' }}
-          style={{ width: 40, height: 40, borderRadius: 14, backgroundColor: colors.inkBlue, alignItems: 'center', justifyContent: 'center' }}>
-          <TextWidget text="+" style={{ fontSize: 24, fontWeight: '700', color: colors.onInkBlue }} />
-        </FlexWidget>
+        <RoundButton text="+" color={colors.inkBlue} uri="dirary://tasks?add=1" />
       </FlexWidget>
 
       {rows.length === 0 ? (
         <FlexWidget style={{ width: 'match_parent', flex: 1, justifyContent: 'center' }}>
-          <TextWidget text={data.line} maxLines={2} truncate="END" style={{ fontSize: 14, color: colors.muted }} />
+          <TextWidget text={data.line} maxLines={2} truncate="END" style={label(14)} />
         </FlexWidget>
-      ) : (
-        rows.map((task) => {
-          // Just ticked: a filled box with a check and a dimmed title, held for a moment before it goes.
-          const done = data.justDone.includes(task.id);
-          const edge = (EDGE[task.priority] ?? colors.inkBlue) as `#${string}`;
-          return (
-            <FlexWidget key={task.id} style={{ width: 'match_parent', flexDirection: 'row', alignItems: 'center', flexGap: 10 }}>
-              <FlexWidget
-                clickAction="TOGGLE_TASK" clickActionData={{ id: task.id }}
-                style={{ width: 32, height: 32, alignItems: 'center', justifyContent: 'center' }}>
-                <FlexWidget style={{ width: 22, height: 22, borderRadius: 7, borderWidth: 2, borderColor: done ? colors.inkBlue : edge, ...(done ? { backgroundColor: colors.inkBlue } : {}), alignItems: 'center', justifyContent: 'center' }}>
-                  {done ? <TextWidget text="✓" style={{ fontSize: 14, fontWeight: '800', color: colors.onInkBlue }} /> : null}
-                </FlexWidget>
-              </FlexWidget>
-              <FlexWidget style={{ flex: 1 }}>
-                <TextWidget text={task.title} maxLines={1} truncate="END" style={{ fontSize: 14, fontWeight: '600', color: done ? colors.faint : colors.text }} />
-              </FlexWidget>
-              {done ? <TextWidget text="Done" style={{ fontSize: 12, fontWeight: '700', color: colors.inkBlue }} />
-                : task.due_time ? <TextWidget text={timeLabel(task.due_time)} style={{ fontSize: 12, fontWeight: '600', color: colors.muted }} /> : null}
-            </FlexWidget>
-          );
-        })
-      )}
-      {more > 0 ? <TextWidget text={`+${more} more`} style={{ fontSize: 12, color: colors.muted }} /> : null}
+      ) : rows.map((task) => <TaskRow key={task.id} task={task} done={data.justDone.includes(task.id)} />)}
+      {more > 0 ? <TextWidget text={`+${more} more`} style={label(12, colors.faint)} /> : null}
     </FlexWidget>
   );
 }
