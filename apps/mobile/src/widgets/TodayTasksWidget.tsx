@@ -38,16 +38,19 @@ export function TodayTasksWidget({ data }: { data: WidgetData }) {
   );
 }
 
-/** 2×2 widget: Ink reacts as the day fills up. */
+/** 2×2 widget: Ink in a big ring that fills as the day's tasks get done, and cheers when they all are. */
 export function InkProgressWidget({ data }: { data: WidgetData }) {
-  const allDone = data.total > 0 && data.open.length === 0;
+  const allDone = data.total > 0 && data.open.length === data.justDone.length;
   return (
-    <FlexWidget
-      clickAction="OPEN_URI" clickActionData={{ uri: 'dirary://tasks' }}
-      style={{ height: 'match_parent', width: 'match_parent', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', backgroundColor: colors.inkBlue, borderRadius: 28, padding: 12, flexGap: 2 }}>
-      <ImageWidget image={INK[allDone ? 'cheer' : data.mood]} imageWidth={84} imageHeight={84} />
-      <TextWidget text={data.total === 0 ? 'Free day' : `${data.done} of ${data.total}`} style={{ fontSize: 22, fontWeight: '800', color: colors.onInkBlue }} />
-      <TextWidget text={data.total === 0 ? 'nothing due' : 'done today'} style={{ fontSize: 12, fontWeight: '700', color: colors.onInkBlue }} />
+    <FlexWidget clickAction="OPEN_URI" clickActionData={{ uri: 'dirary://tasks' }}
+      style={{ ...glowCard('tasks', 10), alignItems: 'center', justifyContent: 'center', flexGap: 4 }}>
+      <Ring size={118} stroke={10} pct={data.total ? data.done / data.total : 0} color={colors.inkBlue}>
+        <ImageWidget image={INK[allDone ? 'cheer' : data.total === 0 ? 'sleepy' : data.mood]} imageWidth={86} imageHeight={86} />
+      </Ring>
+      <FlexWidget style={{ flexDirection: 'row', alignItems: 'flex-end', flexGap: 4 }}>
+        <TextWidget text={data.total === 0 ? 'Free day' : `${data.done} of ${data.total}`} style={big(20)} />
+        <TextWidget text={data.total === 0 ? '' : allDone ? 'all done' : 'done'} style={label(11)} />
+      </FlexWidget>
     </FlexWidget>
   );
 }
