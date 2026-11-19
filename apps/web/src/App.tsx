@@ -3,6 +3,7 @@ import { NavLink, Route, Routes, useLocation } from 'react-router-dom';
 import { ADD_KINDS, markDirection, useAddTo } from './addTo';
 import { HealthIcon, MoneyIcon, TasksIcon, TodayIcon } from './icons';
 import { Mascot } from './Mascot';
+import { ReminderBar } from './ReminderBar';
 import { SetupNeeded, SignIn } from './pages/SignIn';
 import { Health } from './pages/Health';
 import { Money } from './pages/Money';
@@ -63,6 +64,7 @@ function Shell() {
           <Route path="/data" element={<Data />} />
         </Routes>
       </main>
+      <ReminderBar />
       {menu && <AddMenu onPick={(kind) => { setMenu(false); addTo(kind); }} onClose={() => setMenu(false)} />}
     </div>
   );
