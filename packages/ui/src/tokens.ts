@@ -15,6 +15,18 @@ export const colors = {
   collar: '#FF5C7A',
 } as const;
 
+/**
+ * Home-screen widgets ("Midnight glow"): each module's accent, and the dark tint its card fades from.
+ * Only widgets use these; app screens stay flat.
+ */
+export const widgetGlow = {
+  tasks: { accent: '#7C83FF', wash: '#2E2A7A' },
+  money: { accent: '#FF7AA2', accentTo: '#FF9A5C', wash: '#4E1F38' },
+  food: { accent: '#FFB547', wash: '#4D3310' },
+  workout: { accent: '#5BC0FF', wash: '#103457' },
+  track: '#2A2E37',
+} as const;
+
 export const radius = { sm: 9, md: 14, lg: 20, xl: 24, widget: 28, pill: 999 } as const;
 
 export const space = { 1: 4, 2: 8, 3: 12, 4: 16, 5: 20, 6: 24, 8: 32, 10: 40 } as const;

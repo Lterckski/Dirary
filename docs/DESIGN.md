@@ -14,7 +14,7 @@ The source of truth for values is `packages/ui/src/tokens.ts`.
 
 - **Type:** Bricolage Grotesque 800 for numbers and titles, Inter for everything you read. Tabular figures for amounts.
 - **Shape:** cards radius 24, rows 20, inputs 14, checkboxes 9, buttons and chips fully round. Touch targets at least 48.
-- **Surfaces:** flat. No gradients or shadows on UI; depth comes from the three background steps.
+- **Surfaces:** flat. No gradients or shadows on UI; depth comes from the three background steps. The one exception is home-screen widgets ("Midnight glow"): each card fades from its module's dark tint (`widgetGlow` in `@dirary/ui`) into surface, with progress rings and big Bricolage numbers, so they hold their own next to other apps' widgets.
 - **Text on inkBlue** is night (#0A0B0E), never white.
 
 ## Ink, the mascot

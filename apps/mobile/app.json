@@ -56,6 +56,11 @@
       [
         "react-native-android-widget",
         {
+          "fonts": [
+            "./assets/fonts/BricolageGrotesque_800ExtraBold.ttf",
+            "./assets/fonts/Inter_600SemiBold.ttf",
+            "./assets/fonts/Inter_700Bold.ttf"
+          ],
           "widgets": [
             {
               "name": "Day",

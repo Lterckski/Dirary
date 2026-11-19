@@ -6,15 +6,8 @@ import { FlexWidget, ImageWidget, TextWidget } from 'react-native-android-widget
 import { colors } from '@dirary/ui';
 import { formatKcal, formatPeso, timeLabel } from '@dirary/shared';
 import type { WidgetData } from './data';
+import { EDGE, INK } from './glow';
 
-const INK = {
-  happy: require('../../assets/mascot/ink-happy.png'),
-  coach: require('../../assets/mascot/ink-coach.png'),
-  cheer: require('../../assets/mascot/ink-cheer.png'),
-  sleepy: require('../../assets/mascot/ink-sleepy.png'),
-  worried: require('../../assets/mascot/ink-worried.png'),
-} as const;
-const EDGE: Record<number, string> = { 0: colors.inkBlue, 1: colors.inkBlue, 2: colors.amber, 3: colors.red };
 const MAX_ROWS = 4;
 
 /** 4×2 widget: today's tasks, tick-off without opening the app, and a + button. */
