@@ -210,7 +210,8 @@ export function Today() {
               </div>
             </div>
             <div className="row card-foot">
-              <span />
+              <button type="button" className="chip" onClick={() => health.tapWater(glasses + 1)}
+                aria-label={`Add a glass of water. ${glasses} of ${health.goals?.water_glasses ?? 8} today.`}>+ Glass of water</button>
               <button type="button" className="btn small" onClick={() => addTo('food')}>Log food</button>
             </div>
           </section>
