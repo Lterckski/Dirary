@@ -7,6 +7,7 @@ import {
 } from '@dirary/shared';
 import { ADD_KINDS, useAddTo } from '../addTo';
 import { confettiFrom } from '../confetti';
+import { askForNudges, nudgePermission, planNudges } from '../inkNudges';
 import { Mascot } from '../Mascot';
 import { useHealth } from '../health/useHealth';
 import { useWorkouts } from '../health/useWorkouts';
@@ -93,6 +94,15 @@ export function Today() {
     window.setTimeout(() => setParty(false), 1400);
   }, [complete, loading, today]);
 
+  // Ink's nudges and today's task reminders, as browser notifications with the bark, while Dirary is open.
+  const [nudges, setNudges] = useState(nudgePermission);
+  const kcalEaten = food.kcal;
+  const workoutDone = !!workout.session?.done_at;
+  useEffect(() => {
+    if (loading || nudges !== 'granted') return;
+    planNudges(tasks.tasks, { openTasks: view.overdue.length + view.dueToday.length, kcalEaten, workoutName, workoutDone });
+  }, [loading, nudges, tasks.tasks, view, kcalEaten, workoutName, workoutDone]);
+
   // A ticked row stays in the list until it has folded away, then the next task takes its place.
   const shown = topTasks(view, 3);
   const left = view.overdue.length + view.dueToday.length;
@@ -115,6 +125,11 @@ export function Today() {
                 {label}
               </button>
             ))}
+            {nudges === 'default' && (
+              <button type="button" className="add-chip" onClick={() => { void askForNudges().then(() => setNudges(nudgePermission())); }}>
+                Let Ink nudge me here
+              </button>
+            )}
           </div>
         </div>
       </header>
