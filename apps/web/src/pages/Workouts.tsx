@@ -9,11 +9,12 @@ import { useWorkouts, type WorkoutsStore } from '../health/useWorkouts';
 import { useWorkoutTasks } from '../links/useWorkoutTasks';
 import { useTasks } from '../tasks/useTasks';
 import { Modal } from '../ui';
+import { ProgramCard } from './ProgramCard';
 
 const REST_SECONDS = 90;
 type Dialog = { kind: 'routine'; routine: Routine | null } | { kind: 'weight' } | null;
 
-/** The Workouts tab of Health: today's workout, the week, progress, routines, and the workout in progress. */
+/** The Workouts tab of Health: today's workout, the week, your program (gym or home), progress, routines, and the workout in progress. */
 export function WorkoutsTab() {
   const store = useWorkouts();
   const tasks = useTasks();
@@ -114,6 +115,7 @@ export function WorkoutsTab() {
       </div>
 
       <div className="money-col">
+        <ProgramCard />
         <ProgressCard store={store} onLogWeight={() => setDialog({ kind: 'weight' })} />
       </div>
 

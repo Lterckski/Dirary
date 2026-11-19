@@ -704,3 +704,22 @@ input[type='date'].input, input[type='time'].input { cursor: pointer; }
   ::view-transition-old(page) { animation: page-out 120ms ease-out both; }
   ::view-transition-new(page) { animation: page-in-fade 120ms ease-out both; }
 }
+
+/* Health → Workouts: My program */
+.program-switch { align-self: stretch; min-height: 48px; }
+.program-switch button { min-height: 40px; font-size: 14px; }
+.program-days { display: flex; justify-content: space-between; gap: 6px; }
+.program-day { position: relative; width: 44px; height: 44px; border-radius: var(--r-pill); border: 1px solid var(--line); background: var(--raised); color: var(--text); font: inherit; font-weight: 700; font-variant-numeric: tabular-nums; cursor: pointer; }
+.program-day.bjj, .program-day.rest { background: none; color: var(--muted); }
+.program-day.today { border-color: var(--inkBlue); }
+.program-day.today::after { content: ''; position: absolute; left: 50%; bottom: -9px; width: 4px; height: 4px; margin-left: -2px; border-radius: 2px; background: var(--inkBlue); }
+.program-day:hover { border-color: var(--muted); }
+.program-day[aria-pressed='true'] { background: var(--inkBlue); border-color: var(--inkBlue); color: var(--onInkBlue); }
+.program-body { display: flex; flex-direction: column; gap: 8px; margin-top: 6px; }
+.program-day-title { margin: 0; font-size: 22px; line-height: 1.15; }
+.program-today-tag { color: var(--inkBlue); }
+.program-today { border: none; background: none; padding: 4px; color: var(--inkBlue); font: inherit; font-size: 13px; font-weight: 600; cursor: pointer; }
+.program-progression { display: flex; flex-direction: column; gap: 6px; padding-top: 12px; border-top: 1px solid var(--line); }
+.program-progression h3 { margin: 0; }
+.program-progression ul { margin: 0; padding-left: 18px; color: var(--muted); font-size: 14px; display: flex; flex-direction: column; gap: 4px; }
+@media (prefers-reduced-motion: no-preference) { .program-body { animation: task-in 200ms cubic-bezier(0.23, 1, 0.32, 1); } }
