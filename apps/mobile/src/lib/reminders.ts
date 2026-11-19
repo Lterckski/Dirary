@@ -52,9 +52,24 @@ export async function hasReminderPermission(): Promise<boolean> {
 export async function requestReminderPermission(): Promise<boolean> {
   await ensureChannel();
   const current = await Notifications.getPermissionsAsync();
-  if (current.granted) return true;
-  if (!current.canAskAgain) return false;
-  return (await Notifications.requestPermissionsAsync()).granted;
+  const granted = current.granted || (current.canAskAgain && (await Notifications.requestPermissionsAsync()).granted);
+  if (granted) await allowExactAlarms();
+  return granted;
+}
+
+/**
+ * Without the exact alarm permission Android delivers scheduled notifications late (Samsung by many minutes,
+ * sometimes after the moment has passed). app.json declares USE_EXACT_ALARM, which Android 13+ grants at
+ * install, and SCHEDULE_EXACT_ALARM, so older phones can open the "Alarms & reminders" setting.
+ */
+async function allowExactAlarms() {
+  if (Platform.OS !== 'android') return;
+  try {
+    const exact = await Notifications.getExactAlarmPermissionsAsync();
+    if (!exact.granted && exact.canAskAgain) await Notifications.requestExactAlarmPermissionsAsync();
+  } catch {
+    // Older builds without the permission declared: reminders still ring, just less precisely.
+  }
 }
 
 /** Cancels every scheduled notification whose id starts with `prefix`. */
@@ -91,7 +106,8 @@ export async function refreshReminders(tasks: readonly Task[]): Promise<void> {
     await Notifications.scheduleNotificationAsync({
       identifier: `task-${task.id}`,
       content: content(note.title, note.body, { taskId: task.id, url: '/tasks' }),
-      trigger: { type: Notifications.SchedulableTriggerInputTypes.DATE, date: new Date(task.remind_at as string), channelId: CHANNEL },
+      // An alarm clock alarm is never deferred to save battery, so the reminder rings on the minute.
+      trigger: { type: Notifications.SchedulableTriggerInputTypes.DATE, date: new Date(task.remind_at as string), channelId: CHANNEL, delivery: 'alarmClock' },
     });
   }
 }
