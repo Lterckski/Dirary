@@ -64,7 +64,8 @@ export async function widgetData(): Promise<WidgetData> {
     tasks: view, safe, fixed: fixedThisMonth(fixedRows, transactions, today, toLocal), food, goals, hour: now.getHours(),
     workout: { name: workoutName, done: !!workout.session?.done_at, started: !!workout.session?.started_at },
   }, whole);
-  const steps = await todaysSteps().then((s) => (s.kind === 'ok' ? s.steps : null)).catch(() => null);
+  // Health Connect can stall in the background; the widget never waits on it for long.
+  const steps = await within(3000, todaysSteps().then((s) => (s.kind === 'ok' ? s.steps : null)), null).catch(() => null);
 
   return {
     open: [...view.overdue, ...view.dueToday], done: view.done, total: view.total, mood: coach.mood, line: coach.line,
@@ -81,4 +82,27 @@ export async function widgetData(): Promise<WidgetData> {
     steps,
     dayMood: day.mood, dayLine: day.line, safeToday: safe.ready ? safe.safeToday : null,
   };
+}
+
+/** Resolves with `fallback` if `work` takes longer than `ms`. */
+export function within<T>(ms: number, work: Promise<T>, fallback: T): Promise<T> {
+  return new Promise((resolve, reject) => {
+    const timer = setTimeout(() => resolve(fallback), ms);
+    work.then((v) => { clearTimeout(timer); resolve(v); }, (e) => { clearTimeout(timer); reject(e); });
+  });
+}
+
+/** What a widget shows when the phone's data can't be read: an empty day, so it still draws. */
+export const EMPTY_WIDGET_DATA: WidgetData = {
+  open: [], done: 0, total: 0, mood: 'happy', line: 'Open Dirary to load your day.',
+  spentToday: 0, budgetLeft: null, moneyMood: 'happy',
+  kcalEaten: 0, proteinEaten: 0, kcalTarget: null, proteinTarget: null, foodMood: 'happy',
+  water: 0, waterGoal: 8,
+  workoutName: null, workoutDone: false, workoutLine: 'Open Dirary to load your day.', steps: null,
+  dayMood: 'happy', dayLine: 'Open Dirary to load your day.', safeToday: null,
+};
+
+/** widgetData, but never throws and never takes more than 10 seconds, so a widget always draws. */
+export async function safeWidgetData(): Promise<WidgetData> {
+  return within(10_000, widgetData(), EMPTY_WIDGET_DATA).catch(() => EMPTY_WIDGET_DATA);
 }

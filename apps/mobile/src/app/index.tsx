@@ -29,6 +29,7 @@ import { readAccounts, readCategories } from '@/lib/db';
 import { useHealthStore } from '@/lib/health-store';
 import { useMoneyStore } from '@/lib/money-store';
 import { CHECKED_MS, ENTER, LEAVE } from '@/lib/motion';
+import { WidgetCheck } from '@/components/widget-check';
 import { signOutAndClear, toggleTask, useTasksStore } from '@/lib/tasks-store';
 import { startProgramDay, useWorkoutsStore } from '@/lib/workouts-store';
 import { readProgramPlace } from '@/components/program-card';
@@ -48,6 +49,7 @@ export default function TodayScreen() {
   const workouts = useWorkoutsStore();
   const insets = useSafeAreaInsets();
   const [reviewing, setReviewing] = useState(false);
+  const [checkingWidgets, setCheckingWidgets] = useState(false);
   const [, setTick] = useState(0);
   useEffect(() => {
     const timer = setInterval(() => setTick((n) => n + 1), 60_000); // keeps the greeting, the date and "in 2 hours" right
@@ -287,6 +289,7 @@ export default function TodayScreen() {
 
           <View style={{ alignItems: 'center', gap: space[3], paddingTop: space[2] }}>
             <Text variant="label" muted style={{ textAlign: 'center' }}>Export your data or check the weekly backup from Dirary on the web, under Your data.</Text>
+            <Button label="Widget check" onPress={() => setCheckingWidgets(true)} />
             <Button label="Sign out" onPress={() => { signOutAndClear(); }} />
           </View>
         </View>
@@ -312,6 +315,7 @@ export default function TodayScreen() {
         <TransactionEditor tx={null} direction="out" amount={logging.amount} note={logging.note}
           accounts={logging.accounts} categories={logging.categories} onClose={() => setLogging(null)} />
       )}
+      {checkingWidgets && <WidgetCheck onClose={() => setCheckingWidgets(false)} />}
       {reviewing && (
         <WeekReviewScreen tasks={tasks.tasks} transactions={money.transactions} categories={money.categories} logs={health.logs}
           routines={workouts.routines} sessions={workouts.sessions} onClose={() => setReviewing(false)} />

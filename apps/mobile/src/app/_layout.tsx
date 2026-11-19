@@ -15,6 +15,7 @@ import { StaticMascot } from '@/components/mascot';
 import { SetupNeeded, SignIn } from '@/components/sign-in';
 import { FloatingTabBar } from '@/components/tab-bar';
 import { markOpened, openNotificationTaps, requestReminderPermission } from '@/lib/reminders';
+import { refreshWidgets } from '@/widgets/refresh';
 import { useSession } from '@/lib/session';
 import { supabase } from '@/lib/supabase';
 
@@ -66,8 +67,13 @@ export default function RootLayout() {
   useEffect(() => {
     if (!signedIn) return;
     requestReminderPermission().then(() => markOpened()).catch(() => {});
+    refreshWidgets().catch(() => {});
     const stopTaps = openNotificationTaps();
-    const foreground = AppState.addEventListener('change', (s) => { if (s === 'active') markOpened().catch(() => {}); });
+    const foreground = AppState.addEventListener('change', (s) => {
+      if (s !== 'active') return;
+      markOpened().catch(() => {});
+      refreshWidgets().catch(() => {}); // home-screen widgets catch up whenever Dirary is opened
+    });
     return () => { stopTaps(); foreground.remove(); };
   }, [signedIn]);
 
