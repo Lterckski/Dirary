@@ -3,10 +3,10 @@
 'use no memo';
 
 import { FlexWidget, ImageWidget, TextWidget } from 'react-native-android-widget';
-import { colors } from '@dirary/ui';
+import { colors, widgetGlow } from '@dirary/ui';
 import { formatKcal, formatPeso, timeLabel, type Task } from '@dirary/shared';
 import type { WidgetData } from './data';
-import { EDGE, INK, Ring, RoundButton, TickBox, accent, big, glowCard, label, strong } from './glow';
+import { Bar, EDGE, INK, Ring, RoundButton, TickBox, accent, big, glowCard, label, strong } from './glow';
 
 const MAX_ROWS = 4;
 
@@ -55,23 +55,31 @@ export function InkProgressWidget({ data }: { data: WidgetData }) {
   );
 }
 
-/** 2×2 widget: what you've spent today and what's left of this month's budgets. Tap to open Money. */
+/** 2×2 widget: what you've spent today, big, and what's still safe to spend, with a bar of today's share. Tap to open Money. */
 export function TodaySpendWidget({ data }: { data: WidgetData }) {
-  const over = data.budgetLeft !== null && data.budgetLeft < 0;
+  const money = accent('money');
+  const safe = data.safeToday;
+  const overBudget = data.budgetLeft !== null && data.budgetLeft < 0;
+  const over = safe !== null ? safe < 0 : overBudget;
+  const line = safe !== null
+    ? safe < 0 ? `${formatPeso(-safe)} over today` : `${formatPeso(safe)} safe today`
+    : data.budgetLeft === null ? 'No budget set' : overBudget ? `${formatPeso(-data.budgetLeft)} over budget` : `${formatPeso(data.budgetLeft)} left this month`;
+  // How much of today's safe amount is already gone.
+  const share = safe === null ? null : over ? 1 : data.spentToday / Math.max(1, data.spentToday + safe);
   return (
-    <FlexWidget
-      clickAction="OPEN_URI" clickActionData={{ uri: 'dirary://money' }}
-      style={{ height: 'match_parent', width: 'match_parent', flexDirection: 'column', justifyContent: 'space-between', backgroundColor: colors.surface, borderRadius: 28, padding: 14 }}>
+    <FlexWidget clickAction="OPEN_URI" clickActionData={{ uri: 'dirary://money' }} style={{ ...glowCard('money', 14), justifyContent: 'space-between' }}>
       <FlexWidget style={{ width: 'match_parent', flexDirection: 'row', alignItems: 'center', flexGap: 8 }}>
-        <FlexWidget style={{ width: 32, height: 32, borderRadius: 16, backgroundColor: colors.inkBlue, alignItems: 'center', justifyContent: 'center' }}>
-          <ImageWidget image={INK[data.moneyMood]} imageWidth={28} imageHeight={28} />
+        <FlexWidget style={{ width: 30, height: 30, borderRadius: 15, backgroundColor: money, alignItems: 'center', justifyContent: 'center' }}>
+          <ImageWidget image={INK[data.moneyMood]} imageWidth={26} imageHeight={26} />
         </FlexWidget>
-        <TextWidget text="Spent today" style={{ fontSize: 13, fontWeight: '600', color: colors.muted }} />
+        <TextWidget text="Spent today" style={label(12)} />
       </FlexWidget>
-      <TextWidget text={formatPeso(data.spentToday)} maxLines={1} style={{ fontSize: 28, fontWeight: '800', color: colors.text, adjustsFontSizeToFit: true }} />
-      <TextWidget
-        text={data.budgetLeft === null ? 'No budget set' : over ? `${formatPeso(-data.budgetLeft)} over budget` : `${formatPeso(data.budgetLeft)} left this month`}
-        maxLines={1} truncate="END" style={{ fontSize: 12, fontWeight: '600', color: over ? colors.red : colors.muted }} />
+      <FlexWidget style={{ width: 'match_parent', flexDirection: 'column', flexGap: 4 }}>
+        <TextWidget text={formatPeso(data.spentToday)} maxLines={1} style={{ ...big(36), adjustsFontSizeToFit: true }} />
+        <TextWidget text={line} maxLines={1} truncate="END" style={strong(12, over ? colors.red : money)} />
+      </FlexWidget>
+      {share === null ? <TextWidget text=" " style={label(8)} />
+        : <Bar pct={share} color={over ? colors.red : money} to={over ? undefined : widgetGlow.money.accentTo} />}
     </FlexWidget>
   );
 }
