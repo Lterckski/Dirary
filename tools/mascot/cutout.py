@@ -107,8 +107,22 @@ def framed(m,W,shape=None,bg=BLUE,fill=0.98):
     return Image.alpha_composite(out,layer)
 for m in ['happy','coach','cheer','sleepy','worried','paws']:
     im=mood(m); save(im,f'apps/mobile/assets/mascot/ink-{m}.png'); save(im,f'apps/web/public/ink/ink-{m}.png')
-save(framed('happy',1024,'square').convert('RGB'),'apps/mobile/assets/images/icon.png')
-save(framed('happy',1024,None,fill=0.80),'apps/mobile/assets/images/android-icon-foreground.png')
+# The app icon: Ink peeking over a dark card with her paws on its edge, the same as the page headers.
+# `visible` is how much of the picture the launcher shows (Android adaptive icons show the middle two thirds).
+SURFACE=(0x14,0x16,0x1B,255)
+peek_ink=peek.crop(peek.getbbox())
+def icon(W,visible,bg=None):
+    v=W*visible; top=(W-v)/2
+    out=Image.new('RGBA',(W,W),bg or (0,0,0,0))
+    ledge=top+v*0.80  # the card's top edge
+    d=ImageDraw.Draw(out); d.rounded_rectangle([top-v,ledge,W+v,W+v],radius=v*0.10,fill=SURFACE)
+    s=v*0.84/peek_ink.width; ink=peek_ink.resize((round(peek_ink.width*s),round(peek_ink.height*s)),Image.LANCZOS)
+    # In the source the body ends (where the card starts) 45 px above the bottom of the cut-out, under the paws.
+    body_end=(peek_ink.height-45)*s
+    out.alpha_composite(ink,(round(W/2-ink.width/2),round(ledge-body_end)))
+    return out
+save(icon(1024,1.0,BLUE).convert('RGB'),'apps/mobile/assets/images/icon.png')
+save(icon(1024,0.667),'apps/mobile/assets/images/android-icon-foreground.png')
 save(Image.new('RGB',(1024,1024),BLUE[:3]),'apps/mobile/assets/images/android-icon-background.png')
 save(framed('happy',512,None,fill=1.0),'apps/mobile/assets/images/splash-icon.png')
 save(framed('happy',192,'circle'),'apps/web/public/favicon.png')
