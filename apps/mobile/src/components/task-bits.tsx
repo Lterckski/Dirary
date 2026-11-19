@@ -8,6 +8,7 @@ import { PRIORITY_LABEL, RECURRENCE_LABEL, asRecurrence, dayLabel, fromNow, time
 import Animated, { ReduceMotion, ZoomIn } from 'react-native-reanimated';
 import { EASE_OUT } from '@/lib/motion';
 import { Text } from '@/components/ui';
+import { useNow } from '@/lib/use-now';
 
 const URGENCY_COLOR: Record<number, string> = { 0: colors.inkBlue, 1: colors.inkBlue, 2: colors.amber, 3: colors.red };
 const URGENCY_TEXT: Record<number, string> = { 1: colors.muted, 2: colors.amber, 3: colors.red };
@@ -59,7 +60,8 @@ export function TaskRow({ task, list, today, showDay, ticked, onToggle, onOpen }
   const repeat = asRecurrence(task.recurrence_rule);
   const meta = [list?.name, repeat ? RECURRENCE_LABEL[repeat] : null, task.remind_at ? 'Reminder set' : null].filter(Boolean).join(' · ');
   const when = [showDay && task.due_date ? dayLabel(task.due_date, today) : null, task.due_time ? timeLabel(task.due_time) : null].filter(Boolean).join(', ');
-  const away = done ? null : fromNow(task.due_date, task.due_time);
+  const now = useNow();
+  const away = done ? null : fromNow(task.due_date, task.due_time, now);
   const late = !done && ((task.due_date !== null && task.due_date < today) || !!away?.endsWith('ago'));
   const due = [when, away].filter(Boolean).join(' · ');
   const edge = URGENCY_COLOR[task.priority] ?? colors.inkBlue;

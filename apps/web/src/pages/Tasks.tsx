@@ -8,6 +8,7 @@ import { confettiFrom } from '../confetti';
 import { Mascot } from '../Mascot';
 import { DatePicker, TimePicker } from '../pickers';
 import { Modal } from '../ui';
+import { useNow } from '../useNow';
 import { useBillTasks } from '../links/useBillTasks';
 import { useWorkoutTasks } from '../links/useWorkoutTasks';
 import { useWorkouts } from '../health/useWorkouts';
@@ -293,7 +294,8 @@ export function TaskRow({ task, list, today, showDay, phase, fresh, onToggle, on
   const repeat = asRecurrence(task.recurrence_rule);
   const meta = [list?.name, repeat ? RECURRENCE_LABEL[repeat] : null, task.remind_at ? 'Reminder set' : null].filter(Boolean).join(' · ');
   const when = [showDay && task.due_date ? dayLabel(task.due_date, today) : null, task.due_time ? timeLabel(task.due_time) : null].filter(Boolean).join(', ');
-  const away = done ? null : fromNow(task.due_date, task.due_time);
+  const now = useNow();
+  const away = done ? null : fromNow(task.due_date, task.due_time, now);
   return (
     <li ref={ref} className={['task', done && 'done', phase && 'ticked', fresh && 'fresh'].filter(Boolean).join(' ')}>
       <button
