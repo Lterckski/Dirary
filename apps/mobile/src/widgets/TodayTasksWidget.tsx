@@ -91,40 +91,32 @@ function WaterButton({ data }: { data: WidgetData }) {
     <FlexWidget
       clickAction="ADD_WATER"
       accessibilityLabel={`Add a glass of water. ${data.water} of ${data.waterGoal} today.`}
-      style={{ height: 30, paddingHorizontal: 10, borderRadius: 15, backgroundColor: full ? colors.inkBlue : colors.raised, alignItems: 'center', justifyContent: 'center' }}>
-      <TextWidget text={`+💧 ${data.water}/${data.waterGoal}`} maxLines={1} style={{ fontSize: 12, fontWeight: '800', color: full ? colors.onInkBlue : colors.text }} />
+      style={{ height: 30, paddingHorizontal: 10, borderRadius: 15, backgroundColor: full ? accent('workout') : colors.raised, alignItems: 'center', justifyContent: 'center' }}>
+      <TextWidget text={`💧 ${data.water}/${data.waterGoal}`} maxLines={1} style={strong(12, full ? colors.onInkBlue : colors.text)} />
     </FlexWidget>
   );
 }
 
-/** 2×2 widget: calories and protein left today, a + that opens the food search, and a water button that logs a glass in place. Tap anywhere else to open Health. */
+/** 2×2 widget: calories left inside a ring that fills as you eat, a + that opens the food search, protein to go, and a water button that logs a glass in place. Tap anywhere else to open Health. */
 export function FoodTodayWidget({ data }: { data: WidgetData }) {
+  const food = accent('food');
   const kcalLeft = data.kcalTarget === null ? null : Math.round(data.kcalTarget - data.kcalEaten);
   const proteinLeft = data.proteinTarget === null ? null : Math.max(0, Math.round(data.proteinTarget - data.proteinEaten));
   const over = kcalLeft !== null && kcalLeft < 0;
   return (
-    <FlexWidget
-      clickAction="OPEN_URI" clickActionData={{ uri: 'dirary://health' }}
-      style={{ height: 'match_parent', width: 'match_parent', flexDirection: 'column', justifyContent: 'space-between', backgroundColor: colors.surface, borderRadius: 28, padding: 14 }}>
-      <FlexWidget style={{ width: 'match_parent', flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
-        <FlexWidget style={{ width: 32, height: 32, borderRadius: 16, backgroundColor: colors.inkBlue, alignItems: 'center', justifyContent: 'center' }}>
-          <ImageWidget image={INK[data.foodMood]} imageWidth={28} imageHeight={28} />
-        </FlexWidget>
-        <FlexWidget
-          clickAction="OPEN_URI" clickActionData={{ uri: 'dirary://health?log=1' }}
-          style={{ width: 36, height: 36, borderRadius: 18, backgroundColor: colors.inkBlue, alignItems: 'center', justifyContent: 'center' }}>
-          <TextWidget text="+" style={{ fontSize: 22, fontWeight: '800', color: colors.onInkBlue }} />
-        </FlexWidget>
-      </FlexWidget>
-      <FlexWidget style={{ flexDirection: 'column' }}>
-        <TextWidget text={formatKcal(kcalLeft === null ? data.kcalEaten : Math.abs(kcalLeft))} maxLines={1} style={{ fontSize: 28, fontWeight: '800', color: over ? colors.red : colors.text, adjustsFontSizeToFit: true }} />
-        <TextWidget text={kcalLeft === null ? 'kcal eaten today' : over ? 'kcal over today' : 'kcal left today'} maxLines={1} style={{ fontSize: 12, fontWeight: '600', color: colors.muted }} />
+    <FlexWidget clickAction="OPEN_URI" clickActionData={{ uri: 'dirary://health' }} style={{ ...glowCard('food', 12), justifyContent: 'space-between' }}>
+      <FlexWidget style={{ width: 'match_parent', flexDirection: 'row', justifyContent: 'space-between' }}>
+        <Ring size={96} stroke={9} pct={over ? 1 : data.kcalTarget ? data.kcalEaten / data.kcalTarget : 0} color={over ? colors.red : food}>
+          <TextWidget text={formatKcal(kcalLeft === null ? data.kcalEaten : Math.abs(kcalLeft))} maxLines={1} style={big(20, over ? colors.red : colors.text)} />
+          <TextWidget text={kcalLeft === null ? 'kcal eaten' : over ? 'kcal over' : 'kcal left'} style={label(10)} />
+        </Ring>
+        <RoundButton text="+" color={food} uri="dirary://health?log=1" size={36} radius={18} fontSize={22} />
       </FlexWidget>
       <FlexWidget style={{ width: 'match_parent', flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', flexGap: 6 }}>
         <FlexWidget style={{ flex: 1 }}>
           <TextWidget
             text={proteinLeft === null ? `${Math.round(data.proteinEaten)} g protein` : proteinLeft === 0 ? 'Protein hit' : `${proteinLeft} g protein to go`}
-            maxLines={1} truncate="END" style={{ fontSize: 12, fontWeight: '700', color: colors.tongue }} />
+            maxLines={2} truncate="END" style={strong(11, colors.tongue)} />
         </FlexWidget>
         <WaterButton data={data} />
       </FlexWidget>
