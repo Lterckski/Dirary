@@ -197,7 +197,6 @@ export function Money() {
               </>
             )}
             <div className="coach">
-              <span className="coach-badge"><Mascot mood={coach.mood} size={52} /></span>
               <p aria-live="polite">{coach.line}</p>
             </div>
           </section>
@@ -217,7 +216,6 @@ export function Money() {
               ))}
             </ul>
             <div className="wallet-front">
-              <span className="wallet-ink" aria-hidden="true"><Mascot mood="happy" size={132} /></span>
               <h2 id="wallet-title" className="card-label">{stash.stashed > 0 ? 'Spendable' : 'Balance'}</h2>
               <p className="display wallet-total"><Figure value={stash.stashed > 0 ? stash.spendable : stash.total} change={walletChange} /></p>
               {stash.stashed > 0 && <p className="wallet-sub">{formatPeso(stash.stashed)} in stashes · {formatPeso(stash.total)} in total</p>}
@@ -401,7 +399,6 @@ export function Money() {
               <p className="note muted">No transactions in {shown.name} yet. Its balance is the opening balance, {formatPeso(shown.opening_balance_centavos)}.</p>
             ) : days.length === 0 ? (
               <section className="card empty">
-                <Mascot mood="sleepy" size={128} />
                 {/* The quick-add box sits above this list on phones and in the other column on wide screens, so point at it with a button, not a direction. */}
                 <p className="muted">No transactions yet. Type one in the quick-add box, like “250 jollibee #food @gcash”.</p>
                 <button type="button" className="btn primary" onClick={() => { const box = document.getElementById('money-quick'); box?.scrollIntoView({ block: 'center', behavior: 'smooth' }); box?.focus({ preventScroll: true }); }}>Add your first one</button>

@@ -1,5 +1,6 @@
 import type { ReactNode } from 'react';
-import { Pressable, View } from 'react-native';
+import { View } from 'react-native';
+import { Press } from '@/components/press';
 import { Path, Svg } from 'react-native-svg';
 import { colors, radius, space, type ColorToken } from '@dirary/ui';
 import { PRIORITY_LABEL, RECURRENCE_LABEL, asRecurrence, dayLabel, fromNow, timeLabel, type List, type Task } from '@dirary/shared';
@@ -7,13 +8,14 @@ import { PRIORITY_LABEL, RECURRENCE_LABEL, asRecurrence, dayLabel, fromNow, time
 import Animated, { ReduceMotion, ZoomIn } from 'react-native-reanimated';
 import { EASE_OUT } from '@/lib/motion';
 import { Text } from '@/components/ui';
+import { useNow } from '@/lib/use-now';
 
 const URGENCY_COLOR: Record<number, string> = { 0: colors.inkBlue, 1: colors.inkBlue, 2: colors.amber, 3: colors.red };
 const URGENCY_TEXT: Record<number, string> = { 1: colors.muted, 2: colors.amber, 3: colors.red };
 
 export function Chip({ label, active, onPress, dot, count, dashed }: { label: string; active?: boolean; onPress: () => void; dot?: ColorToken; count?: number; dashed?: boolean }) {
   return (
-    <Pressable
+    <Press
       accessibilityRole="button"
       accessibilityState={{ selected: !!active }}
       onPress={onPress}
@@ -29,7 +31,7 @@ export function Chip({ label, active, onPress, dot, count, dashed }: { label: st
           <Text variant="small" weight="semi" style={{ fontVariant: ['tabular-nums'] }}>{count}</Text>
         </View>
       ) : null}
-    </Pressable>
+    </Press>
   );
 }
 
@@ -58,14 +60,15 @@ export function TaskRow({ task, list, today, showDay, ticked, onToggle, onOpen }
   const repeat = asRecurrence(task.recurrence_rule);
   const meta = [list?.name, repeat ? RECURRENCE_LABEL[repeat] : null, task.remind_at ? 'Reminder set' : null].filter(Boolean).join(' · ');
   const when = [showDay && task.due_date ? dayLabel(task.due_date, today) : null, task.due_time ? timeLabel(task.due_time) : null].filter(Boolean).join(', ');
-  const away = done ? null : fromNow(task.due_date, task.due_time);
+  const now = useNow();
+  const away = done ? null : fromNow(task.due_date, task.due_time, now);
   const late = !done && ((task.due_date !== null && task.due_date < today) || !!away?.endsWith('ago'));
   const due = [when, away].filter(Boolean).join(' · ');
   const edge = URGENCY_COLOR[task.priority] ?? colors.inkBlue;
 
   return (
     <View style={{ flexDirection: 'row', alignItems: 'flex-start', paddingVertical: 6, paddingRight: space[3], paddingLeft: 4, borderRadius: radius.lg, borderWidth: 1, borderColor: done ? 'transparent' : colors.line, backgroundColor: done ? 'transparent' : colors.surface }}>
-      <Pressable
+      <Press
         accessibilityRole="checkbox"
         accessibilityState={{ checked: done }}
         accessibilityLabel={`${task.title}, mark ${done ? 'not done' : 'done'}`}
@@ -81,8 +84,8 @@ export function TaskRow({ task, list, today, showDay, ticked, onToggle, onOpen }
             </Animated.View>
           )}
         </View>
-      </Pressable>
-      <Pressable accessibilityRole="button" accessibilityLabel={`Edit ${task.title}`} onPress={() => onOpen(task)} style={({ pressed }) => ({ flex: 1, minHeight: 48, justifyContent: 'center', paddingVertical: 6, gap: 4, opacity: pressed ? 0.6 : 1 })}>
+      </Press>
+      <Press accessibilityRole="button" accessibilityLabel={`Edit ${task.title}`} onPress={() => onOpen(task)} style={({ pressed }) => ({ flex: 1, minHeight: 48, justifyContent: 'center', paddingVertical: 6, gap: 4, opacity: pressed ? 0.6 : 1 })}>
         <Text weight={done ? 'medium' : 'semi'} style={done ? { color: colors.faint, textDecorationLine: 'line-through' } : undefined}>{task.title}</Text>
         {done ? !!list && <Text variant="label" style={{ color: colors.faint }}>{list.name}</Text> : !!meta && <Text variant="label" muted>{meta}</Text>}
         {!done && (task.priority > 0 || !!due) && (
@@ -91,7 +94,7 @@ export function TaskRow({ task, list, today, showDay, ticked, onToggle, onOpen }
             {!!due && <Pill label={due} color={late ? colors.red : colors.muted} />}
           </View>
         )}
-      </Pressable>
+      </Press>
     </View>
   );
 }
@@ -103,12 +106,12 @@ export function Segmented<T extends string>({ label, options, labels, value, onC
       {options.map((option) => {
         const active = option === value;
         return (
-          <Pressable
+          <Press
             key={option} accessibilityRole="button" accessibilityState={{ selected: active }} accessibilityLabel={`${label} ${labels[option]}`}
             onPress={() => onChange(option)} hitSlop={{ top: 8, bottom: 8 }}
             style={{ minHeight: 36, paddingHorizontal: 12, borderRadius: radius.pill, justifyContent: 'center', backgroundColor: active ? colors.raised : 'transparent', borderWidth: 1, borderColor: active ? colors.line : 'transparent' }}>
             <Text variant="label" weight="semi" style={{ color: active ? colors.text : colors.muted }}>{labels[option]}</Text>
-          </Pressable>
+          </Press>
         );
       })}
     </View>

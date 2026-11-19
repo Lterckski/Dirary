@@ -17,11 +17,24 @@
       },
       "predictiveBackGestureEnabled": false,
       "permissions": [
-        "android.permission.health.READ_STEPS"
+        "android.permission.health.READ_STEPS",
+        "android.permission.SCHEDULE_EXACT_ALARM",
+        "android.permission.USE_EXACT_ALARM"
       ]
     },
     "plugins": [
       "expo-router",
+      [
+        "expo-notifications",
+        {
+          "icon": "./assets/notifications/icon.png",
+          "color": "#7C83FF",
+          "sounds": [
+            "./assets/sounds/bark.wav"
+          ],
+          "defaultChannel": "ink-bark-2"
+        }
+      ],
       [
         "expo-splash-screen",
         {
@@ -113,13 +126,6 @@
               "updatePeriodMillis": 1800000
             }
           ]
-        }
-      ],
-      [
-        "expo-notifications",
-        {
-          "color": "#7C83FF",
-          "defaultChannel": "task-reminders"
         }
       ],
       "react-native-health-connect",

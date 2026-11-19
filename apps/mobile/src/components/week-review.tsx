@@ -1,6 +1,7 @@
 /** The weekly review on the phone: tasks done, money by category, workouts and the food streak, Monday to Sunday. */
 import { useMemo, useState } from 'react';
-import { Pressable, ScrollView, View } from 'react-native';
+import { ScrollView, View } from 'react-native';
+import { Press } from '@/components/press';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Path, Svg } from 'react-native-svg';
 import { colors, radius, space } from '@dirary/ui';
@@ -125,10 +126,10 @@ export function WeekReviewScreen(props: {
 function Round({ label, onPress, d, small, disabled }: { label: string; onPress: () => void; d: string; small?: boolean; disabled?: boolean }) {
   const size = small ? 44 : 48;
   return (
-    <Pressable accessibilityRole="button" accessibilityLabel={label} accessibilityState={{ disabled: !!disabled }} disabled={disabled} onPress={onPress} hitSlop={4}
+    <Press accessibilityRole="button" accessibilityLabel={label} accessibilityState={{ disabled: !!disabled }} disabled={disabled} onPress={onPress} hitSlop={4}
       style={({ pressed }) => ({ width: size, height: size, borderRadius: size / 2, backgroundColor: colors.raised, alignItems: 'center', justifyContent: 'center', opacity: disabled ? 0.35 : pressed ? 0.7 : 1 })}>
       <Svg width={20} height={20} viewBox="0 0 24 24"><Path d={d} fill="none" stroke={colors.text} strokeWidth={2.2} strokeLinecap="round" strokeLinejoin="round" /></Svg>
-    </Pressable>
+    </Press>
   );
 }
 

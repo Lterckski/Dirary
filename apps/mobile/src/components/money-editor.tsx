@@ -1,5 +1,6 @@
 import { useState } from 'react';
-import { Pressable, TextInput, View } from 'react-native';
+import { TextInput, View } from 'react-native';
+import { Press } from '@/components/press';
 import { colors, space } from '@dirary/ui';
 import {
   INSTITUTIONS, INSTITUTION_LABEL, LIST_COLORS, TransactionDraft, formatPeso, parseAmount,
@@ -13,9 +14,9 @@ import { addTransaction, addTransfer, removeAccount, removeCategory, removeFixed
 
 const Problem = ({ text }: { text: string | null }) => (text ? <Text variant="label" style={{ color: colors.red }} accessibilityRole="alert">{text}</Text> : null);
 const Danger = ({ label, onPress }: { label: string; onPress: () => void }) => (
-  <Pressable accessibilityRole="button" onPress={onPress} style={{ minHeight: 48, alignItems: 'center', justifyContent: 'center', paddingHorizontal: space[2] }}>
+  <Press accessibilityRole="button" onPress={onPress} style={{ minHeight: 48, alignItems: 'center', justifyContent: 'center', paddingHorizontal: space[2] }}>
     <Text weight="semi" style={{ color: colors.red }}>{label}</Text>
-  </Pressable>
+  </Press>
 );
 const money = { ...styles.input, fontVariant: ['tabular-nums' as const] };
 
@@ -183,10 +184,10 @@ export function ResetEditor({ count, onClose }: { count: number; onClose: () => 
         <TextInput accessibilityLabel="Your password" style={styles.input} value={password} onChangeText={setPassword} secureTextEntry autoComplete="current-password" textContentType="password" autoCapitalize="none" autoFocus onSubmitEditing={reset} />
       </Field>
       <Problem text={problem} />
-      <Pressable accessibilityRole="button" accessibilityState={{ disabled: !password || busy }} disabled={!password || busy} onPress={reset}
+      <Press accessibilityRole="button" accessibilityState={{ disabled: !password || busy }} disabled={!password || busy} onPress={reset}
         style={{ minHeight: 52, borderRadius: 26, alignItems: 'center', justifyContent: 'center', backgroundColor: colors.red, opacity: !password || busy ? 0.45 : 1 }}>
         <Text weight="bold" style={{ color: colors.night }}>{busy ? 'Resetting…' : 'Reset to ₱0'}</Text>
-      </Pressable>
+      </Press>
     </Sheet>
   );
 }
@@ -305,10 +306,10 @@ export function FixedEditor({ fixed, accounts, categories, onClose }: { fixed: F
       <Text variant="label" muted>What you pay every month. Tick one off on the Money screen when it's paid; that logs the payment. Tap one here to change it.</Text>
       {fixed.map((e) => (
         <View key={e.id} style={{ flexDirection: 'row', alignItems: 'center', gap: space[2], paddingLeft: space[4], borderRadius: 20, borderWidth: 1, borderColor: editing?.id === e.id ? colors.inkBlue : colors.line, backgroundColor: colors.surface }}>
-          <Pressable accessibilityRole="button" accessibilityLabel={`Edit ${e.name}`} onPress={() => start(e)} style={{ flex: 1, minHeight: 56, justifyContent: 'center', gap: 2 }}>
+          <Press accessibilityRole="button" accessibilityLabel={`Edit ${e.name}`} onPress={() => start(e)} style={{ flex: 1, minHeight: 56, justifyContent: 'center', gap: 2 }}>
             <Text weight="semi">{e.name}</Text>
             <Text variant="label" muted style={{ fontVariant: ['tabular-nums'] }}>{formatPeso(e.amount_centavos)} · day {e.due_day}</Text>
-          </Pressable>
+          </Press>
           <Danger label="Delete" onPress={() => { if (editing?.id === e.id) start(null); removeFixed(e); }} />
         </View>
       ))}
@@ -424,16 +425,16 @@ export function TxRow({ tx, account, category, onOpen, action }: { tx: Transacti
   const amount = formatPeso(tx.direction === 'in' ? tx.amount_centavos : -tx.amount_centavos, { sign: true });
   return (
     <View style={{ flexDirection: 'row', alignItems: 'center', gap: space[3], paddingVertical: 6, paddingHorizontal: space[4], borderRadius: 20, borderWidth: 1, borderColor: colors.line, backgroundColor: colors.surface }}>
-      <Pressable accessibilityRole="button" accessibilityLabel={`Edit ${title}, ${amount}`} onPress={onOpen} style={{ flex: 1, minHeight: 48, justifyContent: 'center', gap: 2 }}>
+      <Press accessibilityRole="button" accessibilityLabel={`Edit ${title}, ${amount}`} onPress={onOpen} style={{ flex: 1, minHeight: 48, justifyContent: 'center', gap: 2 }}>
         <Text weight="semi">{title}</Text>
         <Text variant="label" muted>{meta}</Text>
-      </Pressable>
+      </Press>
       <Text weight="bold" style={{ color: tx.direction === 'in' ? colors.inkBlue : colors.text, fontVariant: ['tabular-nums'] }}>{amount}</Text>
       {action && (
-        <Pressable accessibilityRole="button" accessibilityLabel={`${action.label} ${title} ${amount}`} onPress={action.onPress}
+        <Press accessibilityRole="button" accessibilityLabel={`${action.label} ${title} ${amount}`} onPress={action.onPress}
           style={{ minHeight: 44, paddingHorizontal: space[4], borderRadius: 22, backgroundColor: colors.inkBlue, justifyContent: 'center' }}>
           <Text variant="label" weight="bold" style={{ color: colors.onInkBlue }}>{action.label}</Text>
-        </Pressable>
+        </Press>
       )}
     </View>
   );

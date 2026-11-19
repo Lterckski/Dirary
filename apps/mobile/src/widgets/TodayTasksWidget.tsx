@@ -1,3 +1,7 @@
+// The React Compiler (on for the whole app in app.json) rewrites components in a way the widget library
+// can't draw, which left every home-screen widget blank. Widgets are plain functions, so opt them out.
+'use no memo';
+
 import { FlexWidget, ImageWidget, TextWidget } from 'react-native-android-widget';
 import { colors } from '@dirary/ui';
 import { formatKcal, formatPeso, timeLabel } from '@dirary/shared';
@@ -40,19 +44,27 @@ export function TodayTasksWidget({ data }: { data: WidgetData }) {
           <TextWidget text={data.line} maxLines={2} truncate="END" style={{ fontSize: 14, color: colors.muted }} />
         </FlexWidget>
       ) : (
-        rows.map((task) => (
-          <FlexWidget key={task.id} style={{ width: 'match_parent', flexDirection: 'row', alignItems: 'center', flexGap: 10 }}>
-            <FlexWidget
-              clickAction="TOGGLE_TASK" clickActionData={{ id: task.id }}
-              style={{ width: 32, height: 32, alignItems: 'center', justifyContent: 'center' }}>
-              <FlexWidget style={{ width: 22, height: 22, borderRadius: 7, borderWidth: 2, borderColor: (EDGE[task.priority] ?? colors.inkBlue) as `#${string}` }} />
+        rows.map((task) => {
+          // Just ticked: a filled box with a check and a dimmed title, held for a moment before it goes.
+          const done = data.justDone.includes(task.id);
+          const edge = (EDGE[task.priority] ?? colors.inkBlue) as `#${string}`;
+          return (
+            <FlexWidget key={task.id} style={{ width: 'match_parent', flexDirection: 'row', alignItems: 'center', flexGap: 10 }}>
+              <FlexWidget
+                clickAction="TOGGLE_TASK" clickActionData={{ id: task.id }}
+                style={{ width: 32, height: 32, alignItems: 'center', justifyContent: 'center' }}>
+                <FlexWidget style={{ width: 22, height: 22, borderRadius: 7, borderWidth: 2, borderColor: done ? colors.inkBlue : edge, ...(done ? { backgroundColor: colors.inkBlue } : {}), alignItems: 'center', justifyContent: 'center' }}>
+                  {done ? <TextWidget text="✓" style={{ fontSize: 14, fontWeight: '800', color: colors.onInkBlue }} /> : null}
+                </FlexWidget>
+              </FlexWidget>
+              <FlexWidget style={{ flex: 1 }}>
+                <TextWidget text={task.title} maxLines={1} truncate="END" style={{ fontSize: 14, fontWeight: '600', color: done ? colors.faint : colors.text }} />
+              </FlexWidget>
+              {done ? <TextWidget text="Done" style={{ fontSize: 12, fontWeight: '700', color: colors.inkBlue }} />
+                : task.due_time ? <TextWidget text={timeLabel(task.due_time)} style={{ fontSize: 12, fontWeight: '600', color: colors.muted }} /> : null}
             </FlexWidget>
-            <FlexWidget style={{ flex: 1 }}>
-              <TextWidget text={task.title} maxLines={1} truncate="END" style={{ fontSize: 14, fontWeight: '600', color: colors.text }} />
-            </FlexWidget>
-            {task.due_time ? <TextWidget text={timeLabel(task.due_time)} style={{ fontSize: 12, fontWeight: '600', color: colors.muted }} /> : null}
-          </FlexWidget>
-        ))
+          );
+        })
       )}
       {more > 0 ? <TextWidget text={`+${more} more`} style={{ fontSize: 12, color: colors.muted }} /> : null}
     </FlexWidget>
@@ -94,7 +106,20 @@ export function TodaySpendWidget({ data }: { data: WidgetData }) {
   );
 }
 
-/** 2×2 widget: calories and protein left today, and a + that opens the food search. Tap anywhere else to open Health. */
+/** Adds a glass of water right from the home screen, without opening the app. */
+function WaterButton({ data }: { data: WidgetData }) {
+  const full = data.water >= data.waterGoal;
+  return (
+    <FlexWidget
+      clickAction="ADD_WATER"
+      accessibilityLabel={`Add a glass of water. ${data.water} of ${data.waterGoal} today.`}
+      style={{ height: 30, paddingHorizontal: 10, borderRadius: 15, backgroundColor: full ? colors.inkBlue : colors.raised, alignItems: 'center', justifyContent: 'center' }}>
+      <TextWidget text={`+💧 ${data.water}/${data.waterGoal}`} maxLines={1} style={{ fontSize: 12, fontWeight: '800', color: full ? colors.onInkBlue : colors.text }} />
+    </FlexWidget>
+  );
+}
+
+/** 2×2 widget: calories and protein left today, a + that opens the food search, and a water button that logs a glass in place. Tap anywhere else to open Health. */
 export function FoodTodayWidget({ data }: { data: WidgetData }) {
   const kcalLeft = data.kcalTarget === null ? null : Math.round(data.kcalTarget - data.kcalEaten);
   const proteinLeft = data.proteinTarget === null ? null : Math.max(0, Math.round(data.proteinTarget - data.proteinEaten));
@@ -117,9 +142,14 @@ export function FoodTodayWidget({ data }: { data: WidgetData }) {
         <TextWidget text={formatKcal(kcalLeft === null ? data.kcalEaten : Math.abs(kcalLeft))} maxLines={1} style={{ fontSize: 28, fontWeight: '800', color: over ? colors.red : colors.text, adjustsFontSizeToFit: true }} />
         <TextWidget text={kcalLeft === null ? 'kcal eaten today' : over ? 'kcal over today' : 'kcal left today'} maxLines={1} style={{ fontSize: 12, fontWeight: '600', color: colors.muted }} />
       </FlexWidget>
-      <TextWidget
-        text={proteinLeft === null ? `${Math.round(data.proteinEaten)} g protein` : proteinLeft === 0 ? 'Protein target hit' : `${proteinLeft} g protein to go`}
-        maxLines={1} truncate="END" style={{ fontSize: 12, fontWeight: '700', color: colors.tongue }} />
+      <FlexWidget style={{ width: 'match_parent', flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', flexGap: 6 }}>
+        <FlexWidget style={{ flex: 1 }}>
+          <TextWidget
+            text={proteinLeft === null ? `${Math.round(data.proteinEaten)} g protein` : proteinLeft === 0 ? 'Protein hit' : `${proteinLeft} g protein to go`}
+            maxLines={1} truncate="END" style={{ fontSize: 12, fontWeight: '700', color: colors.tongue }} />
+        </FlexWidget>
+        <WaterButton data={data} />
+      </FlexWidget>
     </FlexWidget>
   );
 }

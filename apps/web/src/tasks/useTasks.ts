@@ -3,6 +3,7 @@ import {
   LISTS_TABLE, LIST_COLUMNS, TASKS_TABLE, TASK_COLUMNS, completeTask, localDate, reopenTask,
   type List, type ListColor, type Task, type TaskDraft,
 } from '@dirary/shared';
+import { forgetClosedTasks } from '../inkNudges';
 import { supabase } from '../supabase';
 
 const now = () => new Date().toISOString();
@@ -31,6 +32,9 @@ export function useTasks() {
     }
     setLoading(false);
   }, []);
+
+  // Ticking a task off or deleting it, on any page, stops its reminder.
+  useEffect(() => { if (!loading) forgetClosedTasks(tasks); }, [tasks, loading]);
 
   useEffect(() => {
     load();

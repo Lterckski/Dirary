@@ -18,7 +18,7 @@ The source of truth for values is `packages/ui/src/tokens.ts`.
 - **Text on inkBlue** is night (#0A0B0E), never white.
 
 ## Ink, the mascot
-One SVG drawing with a `mood` prop. See `docs/mascot-moods.png`.
+Pictures cut from the Gemini art, one per mood, plus her paws for leaning on a card. See `docs/mascot-moods.png`.
 
 | Mood | When |
 | --- | --- |
@@ -29,3 +29,8 @@ One SVG drawing with a `mood` prop. See `docs/mascot-moods.png`.
 | worried | Overdue task, over budget, missed log. Gentle, never nagging |
 
 Ink speaks in short, friendly lines. One line at a time.
+
+In phone notifications she's cheekier, like a pet that wants attention: a little guilt-trippy, never mean ("Nothing in the food log yet. Ink is not judging. (Ink is judging.)"). They bark.
+
+## Motion
+- Everything you can tap on the phone squishes a little while held and springs back (`Press`), with a light haptic tick. The + button squishes more and ticks harder.

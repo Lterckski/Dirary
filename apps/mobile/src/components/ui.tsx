@@ -1,5 +1,6 @@
 import type { ReactNode } from 'react';
-import { Pressable, StyleSheet, Text as RNText, View, type StyleProp, type TextProps, type TextStyle, type ViewStyle } from 'react-native';
+import { StyleSheet, Text as RNText, View, type StyleProp, type TextProps, type TextStyle, type ViewStyle } from 'react-native';
+import { Press } from '@/components/press';
 import { colors, fonts, radius, space, type } from '@dirary/ui';
 
 type Variant = 'hero' | 'title' | 'heading' | 'body' | 'label' | 'small';
@@ -19,13 +20,15 @@ export function Card({ children, style }: { children: ReactNode; style?: StylePr
 
 export function Button({ label, onPress, primary, disabled }: { label: string; onPress: () => void; primary?: boolean; disabled?: boolean }) {
   return (
-    <Pressable
+    <Press
       accessibilityRole="button"
       disabled={disabled}
       onPress={onPress}
-      style={({ pressed }) => [styles.button, primary && styles.primary, (pressed || disabled) && { opacity: 0.6 }]}>
+      haptic={primary ? 'light' : 'select'}
+      sink={primary ? 2 : 0}
+      style={[styles.button, primary && styles.primary, disabled && { opacity: 0.5 }]}>
       <Text weight={primary ? 'bold' : 'semi'} style={{ color: primary ? colors.onInkBlue : colors.text }}>{label}</Text>
-    </Pressable>
+    </Press>
   );
 }
 

@@ -231,7 +231,6 @@ input[type='date'].input, input[type='time'].input { cursor: pointer; }
 .wallet-card-balance { font-size: 15px; font-weight: 700; font-variant-numeric: tabular-nums; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .wallet-front { position: relative; overflow: hidden; margin-top: -28px; padding: 26px 22px 22px; border-radius: 28px; background: var(--raised); border: 1px solid var(--line); display: flex; flex-direction: column; gap: 6px; }
 .wallet-front::before { content: ''; position: absolute; inset: 9px; border-radius: 20px; border: 1.5px dashed rgba(244, 245, 247, 0.16); pointer-events: none; }
-.wallet-ink { position: absolute; right: -14px; bottom: -22px; opacity: 0.13; pointer-events: none; }
 .wallet-total { font-size: clamp(34px, 7vw, 44px); font-variant-numeric: tabular-nums; }
 .wallet-actions { gap: 8px; margin-top: 10px; position: relative; flex-wrap: wrap; }
 .wallet-actions .chip { background: var(--night); }
@@ -420,7 +419,7 @@ input[type='date'].input, input[type='time'].input { cursor: pointer; }
 /* ---- Ink looking over the first card: body behind it, front paws over its edge ---- */
 .peek { position: relative; margin-top: -50px; }
 .peek .card.safe { margin-top: 0; }
-.peek-ink { position: absolute; z-index: 0; right: 28px; top: -70px; pointer-events: none; line-height: 0; }
+.peek-ink { position: absolute; z-index: 0; right: 28px; top: -84px; pointer-events: none; line-height: 0; }
 .peek-paws { position: absolute; z-index: 2; right: 27px; top: -15px; pointer-events: none; line-height: 0; }
 
 /* ---- Date and time pickers (in place of the browser's, which can't take the theme) ---- */
@@ -703,4 +702,100 @@ input[type='date'].input, input[type='time'].input { cursor: pointer; }
 @media (prefers-reduced-motion: reduce) {
   ::view-transition-old(page) { animation: page-out 120ms ease-out both; }
   ::view-transition-new(page) { animation: page-in-fade 120ms ease-out both; }
+}
+
+/* Health → Workouts: My program */
+.program-switch { align-self: stretch; min-height: 48px; }
+.program-switch button { min-height: 40px; font-size: 14px; }
+.program-days { display: flex; justify-content: space-between; gap: 6px; }
+.program-day { position: relative; width: 44px; height: 44px; border-radius: var(--r-pill); border: 1px solid var(--line); background: var(--raised); color: var(--text); font: inherit; font-weight: 700; font-variant-numeric: tabular-nums; cursor: pointer; }
+.program-day.bjj, .program-day.rest { background: none; color: var(--muted); }
+.program-day.today { border-color: var(--inkBlue); }
+.program-day.today::after { content: ''; position: absolute; left: 50%; bottom: -9px; width: 4px; height: 4px; margin-left: -2px; border-radius: 2px; background: var(--inkBlue); }
+.program-day:hover { border-color: var(--muted); }
+.program-day[aria-pressed='true'] { background: var(--inkBlue); border-color: var(--inkBlue); color: var(--onInkBlue); }
+.program-body { display: flex; flex-direction: column; gap: 8px; margin-top: 6px; }
+.program-day-title { margin: 0; font-size: 22px; line-height: 1.15; }
+.program-today-tag { color: var(--inkBlue); }
+.program-today { border: none; background: none; padding: 4px; color: var(--inkBlue); font: inherit; font-size: 13px; font-weight: 600; cursor: pointer; }
+.program-progression { display: flex; flex-direction: column; gap: 6px; padding-top: 12px; border-top: 1px solid var(--line); }
+.program-progression h3 { margin: 0; }
+.program-progression ul { margin: 0; padding-left: 18px; color: var(--muted); font-size: 14px; display: flex; flex-direction: column; gap: 4px; }
+@media (prefers-reduced-motion: no-preference) { .program-body { animation: task-in 200ms cubic-bezier(0.23, 1, 0.32, 1); } }
+/* ---- Press: everything you can click squishes a little while held and springs back when let go,
+   the same feel as Press on the phone. Small things squish more than big ones. ---- */
+@media (prefers-reduced-motion: no-preference) {
+  :is(.btn, .chip, .add-chip, .add-meal, .round-btn, .step, .cal-nav, .drop, .fab, .chip-x, .offer-close, .nav a, .nav-small, .new, .tile, .wallet-card, .week-link, .food-row, .stash-main, .task-main) {
+    transition: transform 320ms cubic-bezier(0.34, 1.56, 0.64, 1), background-color 160ms ease-out, border-color 160ms ease-out, opacity 160ms ease-out, filter 160ms ease-out;
+    -webkit-tap-highlight-color: transparent;
+  }
+  :is(.btn, .chip, .add-chip, .add-meal, .round-btn, .step, .cal-nav, .drop, .chip-x, .offer-close, .nav-small, .new):active:not(:disabled) { transform: scale(0.94); transition-duration: 80ms; transition-timing-function: ease-out; }
+  .btn.primary:active:not(:disabled) { transform: translateY(2px) scale(0.95); }
+  .fab:active { transform: scale(0.88); transition-duration: 80ms; transition-timing-function: ease-out; }
+  :is(.nav a, .tile, .wallet-card, .week-link, .food-row, .stash-main, .task-main):active { transform: scale(0.98); transition-duration: 90ms; transition-timing-function: ease-out; }
+}
+@media (prefers-reduced-motion: reduce) {
+  :is(.btn, .chip, .add-chip, .fab, .tile, .wallet-card):active { transform: none; opacity: 0.8; }
+}
+
+/* ---- Task reminders that went off: "Remind me in 15 min" / "Cancel" ---- */
+.reminder-bar { position: fixed; right: 24px; bottom: 24px; z-index: 20; display: flex; flex-direction: column; gap: 12px; width: min(400px, calc(100vw - 32px)); }
+.reminder-card { display: grid; grid-template-columns: auto 1fr; align-items: center; gap: 10px 12px; padding: 16px; border-radius: var(--r-xl); background: var(--surface); border: 1px solid var(--inkBlue); }
+.reminder-card .chips { grid-column: 1 / -1; }
+.reminder-text { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+@media (max-width: 720px) { .reminder-bar { right: 16px; bottom: 96px; } }
+
+/* ---- Ink's idle animations: one per mood, pivoting at her feet. Moves are in % of her size. ---- */
+@keyframes ink-idle-happy { /* a curious head tilt one way, then the other */
+  0%, 100% { transform: none; }
+  12% { transform: translateY(-1.5%) rotate(-4deg); }
+  22% { transform: translateY(-1.5%) rotate(-4deg); }
+  36% { transform: rotate(3.5deg); }
+  44% { transform: rotate(3.5deg); }
+  54% { transform: none; }
+}
+@keyframes ink-idle-coach { /* two quick nods, then a thoughtful tilt */
+  0%, 100% { transform: none; }
+  3% { transform: translateY(2%); }
+  6.5% { transform: none; }
+  9.5% { transform: translateY(2%); }
+  14% { transform: none; }
+  33% { transform: none; }
+  42% { transform: rotate(-2.5deg); }
+  55% { transform: rotate(-2.5deg); }
+  64% { transform: none; }
+}
+@keyframes ink-idle-cheer { /* happy bounces and a wiggle, like a wagging tail */
+  0%, 100% { transform: none; }
+  8% { transform: translateY(-6%); animation-timing-function: ease-in; }
+  16% { transform: scale(1.03, 0.97); }
+  22% { transform: translateY(-4%); animation-timing-function: ease-in; }
+  29% { transform: none; }
+  34% { transform: rotate(4deg); }
+  40% { transform: rotate(-4deg); }
+  45% { transform: rotate(3deg); }
+  50% { transform: none; }
+}
+@keyframes ink-idle-sleepy { /* slow, deep breaths with a drowsy lean */
+  0%, 100% { transform: none; }
+  45% { transform: scale(1.035) rotate(-1.5deg); }
+}
+@keyframes ink-idle-worried { /* a nervous fidget, then a hopeful tilt */
+  0%, 100% { transform: none; }
+  2% { transform: translateX(-1.5%); }
+  4% { transform: translateX(1.5%); }
+  6% { transform: translateX(-1%); }
+  8% { transform: none; }
+  36% { transform: none; }
+  48% { transform: rotate(3deg); }
+  64% { transform: rotate(3deg); }
+  76% { transform: none; }
+}
+@media (prefers-reduced-motion: no-preference) {
+  .ink { transform-origin: 50% 100%; animation-timing-function: ease-in-out; animation-iteration-count: infinite; }
+  .ink-happy { animation-name: ink-idle-happy; animation-duration: 5.2s; }
+  .ink-coach { animation-name: ink-idle-coach; animation-duration: 5.6s; }
+  .ink-cheer { animation-name: ink-idle-cheer; animation-duration: 2.6s; }
+  .ink-sleepy { animation-name: ink-idle-sleepy; animation-duration: 4.8s; }
+  .ink-worried { animation-name: ink-idle-worried; animation-duration: 5s; }
 }

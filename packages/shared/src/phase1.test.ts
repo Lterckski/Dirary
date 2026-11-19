@@ -3,7 +3,7 @@ import { fromNow } from './dates';
 import { parseQuickAdd } from './quickAdd';
 import { completeTask, nextDueDate } from './recurrence';
 import { doneView, groupTasks } from './taskViews';
-import { remindAt, reminderOf } from './reminders';
+import { defaultReminder, remindAt, reminderDue, reminderOf } from './reminders';
 import type { Task } from './tasks';
 
 const NOW = new Date(2026, 10, 17, 8, 0, 0); // Tue 17 Nov 2026, 8:00 local
@@ -115,5 +115,26 @@ describe('doneView', () => {
       ['2026-11-17', ['2026-11-17T12:00:00Z', '2026-11-17T09:00:00Z']],
       ['2026-11-15', ['2026-11-15T10:00:00Z']],
     ]);
+  });
+});
+
+describe('reminders: heads-up and late saves', () => {
+  it('reminds 30 minutes before a timed task by default', () => {
+    expect(defaultReminder('16:42')).toBe('30m');
+    expect(defaultReminder(null)).toBe('none');
+    expect(remindAt('2026-11-19', '16:42', '30m')).toBe(new Date(2026, 10, 19, 16, 12).toISOString());
+    expect(reminderOf({ due_date: '2026-11-19', due_time: '16:42', remind_at: new Date(2026, 10, 19, 16, 12).toISOString() })).toBe('30m');
+  });
+
+  it('rings at the due time when the heads-up was already past on saving', () => {
+    const task = { due_date: '2026-11-19', due_time: '16:42', remind_at: new Date(2026, 10, 19, 16, 12).toISOString(), updated_at: new Date(2026, 10, 19, 16, 30).toISOString() };
+    expect(reminderDue(task, new Date(2026, 10, 19, 16, 31))?.getTime()).toBe(new Date(2026, 10, 19, 16, 42).getTime());
+    expect(reminderDue(task, new Date(2026, 10, 19, 16, 43))).toBeNull();
+  });
+
+  it('rings at the reminder when it is still ahead, and not again once it has rung', () => {
+    const task = { due_date: '2026-11-19', due_time: '16:42', remind_at: new Date(2026, 10, 19, 16, 12).toISOString(), updated_at: new Date(2026, 10, 19, 9, 0).toISOString() };
+    expect(reminderDue(task, new Date(2026, 10, 19, 10, 0))?.getTime()).toBe(new Date(2026, 10, 19, 16, 12).getTime());
+    expect(reminderDue(task, new Date(2026, 10, 19, 16, 20))).toBeNull();
   });
 });

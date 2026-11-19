@@ -1,7 +1,9 @@
 import { useEffect, useMemo, useState, type FormEvent } from 'react';
+import { useLocation } from 'react-router-dom';
 import {
   STARTER_EXERCISES, WEEKDAY_NAME, WEEKDAY_SHORT, localDate, WEEK_ORDER, changeLabel, exerciseProgress, formatKg, lastSets, loggedExercises, parseKg, planOf, prefill, routineMinutes,
   setsLabel, targetLabel, todaysWorkout, weekCount, weekStrip, weekdaysLabel, weekdaysOf, weekdaysText, weightSeries, workoutCoach,
+  isProgramRoutine,
   type Exercise, type PlanItem, type ProgressPoint, type Routine, type SetValue, type StarterExercise, type WorkoutSession,
 } from '@dirary/shared';
 import { Mascot } from '../Mascot';
@@ -9,21 +11,26 @@ import { useWorkouts, type WorkoutsStore } from '../health/useWorkouts';
 import { useWorkoutTasks } from '../links/useWorkoutTasks';
 import { useTasks } from '../tasks/useTasks';
 import { Modal } from '../ui';
+import { ProgramCard } from './ProgramCard';
 
 const REST_SECONDS = 90;
 type Dialog = { kind: 'routine'; routine: Routine | null } | { kind: 'weight' } | null;
 
-/** The Workouts tab of Health: today's workout, the week, progress, routines, and the workout in progress. */
+/** The Workouts tab of Health: today's workout, the week, your program (gym or home), progress, routines, and the workout in progress. */
 export function WorkoutsTab() {
   const store = useWorkouts();
   const tasks = useTasks();
   const link = useWorkoutTasks(tasks, store);
-  const { exercises, routines, sessions, sets, metrics, loading, error } = store;
-  const [active, setActive] = useState<string | null>(null);
+  const { exercises, sessions, sets, metrics, loading, error } = store;
+  // Program days run on hidden routines; they're started from My program, not listed as your routines.
+  const routines = useMemo(() => store.routines.filter((r) => !isProgramRoutine(r)), [store.routines]);
+  const location = useLocation();
+  // Today's Start button starts the program day and sends its id along, to open it here.
+  const [active, setActive] = useState<string | null>(() => (location.state as { session?: string } | null)?.session ?? null);
   const [dialog, setDialog] = useState<Dialog>(null);
   const today = localDate();
 
-  const { routine, session } = useMemo(() => todaysWorkout(routines, sessions, today), [routines, sessions, today]);
+  const { routine, session } = useMemo(() => todaysWorkout(store.routines, sessions, today), [store.routines, sessions, today]);
   const coach = workoutCoach({ routine, session, exercises, sets, sessions });
   const week = useMemo(() => weekStrip(routines, sessions, today), [routines, sessions, today]);
   const count = weekCount(week);
@@ -71,7 +78,6 @@ export function WorkoutsTab() {
               </div>
             )}
             <div className="coach">
-              <span className="coach-badge"><Mascot mood={coach.mood} size={52} /></span>
               <p aria-live="polite">{coach.line}</p>
             </div>
           </section>
@@ -114,6 +120,7 @@ export function WorkoutsTab() {
       </div>
 
       <div className="money-col">
+        <ProgramCard sessions={sessions} onStart={async (place, day) => { const s = await store.startProgramDay(place, day); if (s) setActive(s.id); }} />
         <ProgressCard store={store} onLogWeight={() => setDialog({ kind: 'weight' })} />
       </div>
 

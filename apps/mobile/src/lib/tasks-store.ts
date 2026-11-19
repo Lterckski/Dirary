@@ -9,6 +9,7 @@ import { reconcileWorkoutTasks, toggleWorkoutTask } from './workout-tasks';
 import { clearLocal, getMeta, pendingCount, readLists, readTasks, saveLocal, syncAll } from './db';
 import { refreshReminders } from './reminders';
 import { supabase } from './supabase';
+import { watchTables } from './realtime';
 import { clearCaptures } from '../../modules/dirary-capture';
 import { refreshWidgets } from '../widgets/refresh';
 
@@ -149,17 +150,12 @@ export function useTasksStore() {
     load().then(syncTasks);
     const appState = AppState.addEventListener('change', (state) => { if (state === 'active') syncTasks(); });
     const interval = setInterval(syncTasks, 60_000);
-    const client = supabase;
-    const channel = client
-      ?.channel('tasks_phone')
-      .on('postgres_changes', { event: '*', schema: 'public', table: TASKS_TABLE }, syncSoon)
-      .on('postgres_changes', { event: '*', schema: 'public', table: LISTS_TABLE }, syncSoon)
-      .subscribe();
+    const unwatch = watchTables('tasks_phone', [TASKS_TABLE, LISTS_TABLE], syncSoon);
     return () => {
       listeners.delete(load);
       appState.remove();
       clearInterval(interval);
-      if (client && channel) client.removeChannel(channel);
+      unwatch();
     };
   }, [load]);
 

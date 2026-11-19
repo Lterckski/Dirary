@@ -2,7 +2,8 @@ import { useLocalSearchParams } from 'expo-router';
 import { useEffect, useMemo, useRef, useState, type ComponentRef } from 'react';
 import * as Haptics from 'expo-haptics';
 import Animated, { ReduceMotion, ZoomIn } from 'react-native-reanimated';
-import { AppState, Pressable, ScrollView, Share, TextInput, View } from 'react-native';
+import { AppState, ScrollView, Share, TextInput, View } from 'react-native';
+import { Press } from '@/components/press';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Path, Svg } from 'react-native-svg';
 import { colors, radius, space } from '@dirary/ui';
@@ -208,7 +209,7 @@ export default function MoneyScreen() {
           <Text variant="small" weight="bold" style={{ color: colors.onInkBlue, letterSpacing: 1.3 }}>{now.toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' }).toUpperCase()}</Text>
           <Text variant="title" accessibilityRole="header" style={{ color: colors.onInkBlue }}>Hello, {GREETING_NAME}!</Text>
           {/* Ink sits behind the first card and peeks over its top edge. */}
-          <View pointerEvents="none" accessibilityElementsHidden importantForAccessibility="no-hide-descendants" style={{ position: 'absolute', right: space[6], bottom: 22 }}>
+          <View pointerEvents="none" accessibilityElementsHidden importantForAccessibility="no-hide-descendants" style={{ position: 'absolute', right: space[6], bottom: 36 }}>
             <Mascot mood={coach.mood} size={96} />
           </View>
         </View>
@@ -222,10 +223,10 @@ export default function MoneyScreen() {
           </View>
           <View style={[styles.row, { justifyContent: 'space-between' }]}>
             <Text variant="small" weight="bold" style={LABEL}>SAFE TO SPEND TODAY</Text>
-            <Pressable accessibilityRole="button" accessibilityLabel="Set monthly budget" onPress={() => setSheet({ kind: 'budget' })} hitSlop={2}
+            <Press accessibilityRole="button" accessibilityLabel="Set monthly budget" onPress={() => setSheet({ kind: 'budget' })} hitSlop={2}
               style={{ width: 44, height: 44, borderRadius: 22, backgroundColor: colors.raised, alignItems: 'center', justifyContent: 'center' }}>
               <Svg width={18} height={18} viewBox="0 0 24 24"><Path d="M4 20h4L19 9l-4-4L4 16v4z" fill="none" stroke={colors.text} strokeWidth={2} strokeLinejoin="round" /></Svg>
-            </Pressable>
+            </Press>
           </View>
           {safe.ready ? (
             <>
@@ -249,9 +250,6 @@ export default function MoneyScreen() {
             </>
           )}
           <View style={styles.row}>
-            <View style={{ width: 60, height: 60, borderRadius: 30, backgroundColor: colors.inkBlue, alignItems: 'center', justifyContent: 'center' }}>
-              <Mascot mood={coach.mood} size={52} />
-            </View>
             <Text style={{ flex: 1 }} accessibilityLiveRegion="polite">{coach.line}</Text>
           </View>
         </Card>
@@ -260,20 +258,17 @@ export default function MoneyScreen() {
         <View>
           <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 6, paddingHorizontal: 14, paddingTop: 8, flexGrow: 1 }}>
             {accounts.map((a, i) => (
-              <Pressable key={a.id} accessibilityRole="button" accessibilityState={{ selected: only === a.id }} accessibilityLabel={`${a.name}, ${formatPeso(accountBalance(a, transactions))}. Show only ${a.name} transactions`}
+              <Press key={a.id} accessibilityRole="button" accessibilityState={{ selected: only === a.id }} accessibilityLabel={`${a.name}, ${formatPeso(accountBalance(a, transactions))}. Show only ${a.name} transactions`}
                 onPress={() => setOnly((cur) => (cur === a.id ? null : a.id))}
                 style={({ pressed }) => ({ opacity: pressed ? 0.85 : shown && shown.id !== a.id ? 0.45 : 1, flexGrow: 1, minWidth: 112, marginTop: (i % 2 ? 8 : 0) + (only === a.id ? -6 : 0), borderWidth: only === a.id ? 2 : 0, borderBottomWidth: 0, borderColor: colors.text, paddingTop: space[3], paddingHorizontal: 14, paddingBottom: 40, borderTopLeftRadius: 16, borderTopRightRadius: 16, backgroundColor: CARD_COLOR[a.institution], gap: 2 })}>
                 <Text variant="small" weight="bold" numberOfLines={1} style={{ color: colors.onInkBlue }}>{a.name}</Text>
                 <Text variant="label" weight="bold" numberOfLines={1} style={[NUM, { color: colors.onInkBlue }]}>{formatPeso(accountBalance(a, transactions))}</Text>
                 {(stash.byAccount.get(a.id)?.stashed ?? 0) > 0 && <Text variant="small" numberOfLines={1} style={[NUM, { color: colors.onInkBlue, opacity: 0.8 }]}>{formatPeso(stash.byAccount.get(a.id)!.stashed)} stashed</Text>}
-              </Pressable>
+              </Press>
             ))}
           </ScrollView>
           <View style={{ marginTop: -28, padding: space[6], borderRadius: 28, borderWidth: 1, borderColor: colors.line, backgroundColor: colors.raised, overflow: 'hidden', gap: 6 }}>
             <View pointerEvents="none" style={{ position: 'absolute', top: 9, left: 9, right: 9, bottom: 9, borderRadius: 20, borderWidth: 1.5, borderStyle: 'dashed', borderColor: colors.line }} />
-            <View pointerEvents="none" accessibilityElementsHidden importantForAccessibility="no-hide-descendants" style={{ position: 'absolute', right: -14, bottom: -22, opacity: 0.13 }}>
-              <Mascot mood="happy" size={132} />
-            </View>
             <Text variant="small" weight="bold" style={LABEL}>{stash.stashed > 0 ? 'SPENDABLE' : 'BALANCE'}</Text>
             <View>
               <Text variant="title" style={NUM} adjustsFontSizeToFit numberOfLines={1}>{formatPeso(stash.stashed > 0 ? stash.spendable : stash.total)}</Text>
@@ -283,15 +278,15 @@ export default function MoneyScreen() {
             {shown && (
               <View style={[styles.row, { flexWrap: 'wrap', gap: space[1] }]} accessibilityLiveRegion="polite">
                 <Text variant="label" muted>Showing <Text variant="label" weight="bold">{shown.name}</Text> only.</Text>
-                <Pressable accessibilityRole="button" onPress={showLedger} style={{ minHeight: 44, justifyContent: 'center', paddingHorizontal: space[1] }}><Text variant="label" weight="semi" style={{ color: colors.inkBlue }}>See its transactions</Text></Pressable>
-                <Pressable accessibilityRole="button" onPress={() => setOnly(null)} style={{ minHeight: 44, justifyContent: 'center', paddingHorizontal: space[1] }}><Text variant="label" weight="semi" style={{ color: colors.inkBlue }}>Show all</Text></Pressable>
+                <Press accessibilityRole="button" onPress={showLedger} style={{ minHeight: 44, justifyContent: 'center', paddingHorizontal: space[1] }}><Text variant="label" weight="semi" style={{ color: colors.inkBlue }}>See its transactions</Text></Press>
+                <Press accessibilityRole="button" onPress={() => setOnly(null)} style={{ minHeight: 44, justifyContent: 'center', paddingHorizontal: space[1] }}><Text variant="label" weight="semi" style={{ color: colors.inkBlue }}>Show all</Text></Press>
               </View>
             )}
             <View style={[styles.row, { flexWrap: 'wrap', gap: space[2], marginTop: space[2] }]}>
-              <Pressable accessibilityRole="button" onPress={() => setSheet({ kind: 'tx', tx: null, direction: 'in', accountId: shown?.id })}
+              <Press accessibilityRole="button" onPress={() => setSheet({ kind: 'tx', tx: null, direction: 'in', accountId: shown?.id })}
                 style={{ minHeight: 44, paddingHorizontal: space[4], borderRadius: 22, backgroundColor: colors.inkBlue, justifyContent: 'center' }}>
                 <Text variant="label" weight="bold" style={{ color: colors.onInkBlue }}>{shown ? `+ Add money to ${shown.name}` : '+ Add money'}</Text>
-              </Pressable>
+              </Press>
               {accounts.length > 1 && <Chip label="Transfer" onPress={() => setSheet({ kind: 'transfer' })} />}
               <Chip label="Accounts" onPress={() => setSheet({ kind: 'accounts' })} />
             </View>
@@ -310,13 +305,13 @@ export default function MoneyScreen() {
             const pct = stashProgress(s);
             return (
               <View key={s.id} style={{ gap: space[2], paddingTop: space[2], borderTopWidth: 1, borderColor: colors.line }}>
-                <Pressable accessibilityRole="button" accessibilityLabel={`Edit ${s.name}`} onPress={() => setSheet({ kind: 'stash', stash: s })} style={[styles.row, { minHeight: 44 }]}>
+                <Press accessibilityRole="button" accessibilityLabel={`Edit ${s.name}`} onPress={() => setSheet({ kind: 'stash', stash: s })} style={[styles.row, { minHeight: 44 }]}>
                   <View style={{ flex: 1, gap: 2 }}>
                     <Text weight="semi">{s.name}</Text>
                     <Text variant="label" muted>{accountById.get(s.account_id)?.name}{s.goal_centavos ? ` · goal ${formatPeso(s.goal_centavos)}` : ''}</Text>
                   </View>
                   <Text weight="bold" style={NUM}>{formatPeso(s.amount_centavos)}</Text>
-                </Pressable>
+                </Press>
                 {pct !== null && (
                   <Bar pct={pct} color={colors.inkBlue} label={`${s.name} goal`} />
                 )}
@@ -338,13 +333,13 @@ export default function MoneyScreen() {
         {shortcuts.length > 0 && (
           <View style={{ flexDirection: 'row', gap: 10 }}>
             {shortcuts.map((c) => (
-              <Pressable key={c.id} accessibilityRole="button" accessibilityLabel={`Add ${c.name} spending`} onPress={() => setSheet({ kind: 'tx', tx: null, categoryId: c.id })}
+              <Press key={c.id} accessibilityRole="button" accessibilityLabel={`Add ${c.name} spending`} onPress={() => setSheet({ kind: 'tx', tx: null, categoryId: c.id })}
                 style={({ pressed }) => ({ flex: 1, minHeight: 88, borderRadius: 22, borderWidth: 1, borderColor: colors.line, backgroundColor: colors.surface, alignItems: 'center', justifyContent: 'center', gap: space[2], paddingHorizontal: 6, opacity: pressed ? 0.7 : 1 })}>
                 <View style={{ width: 34, height: 34, borderRadius: 17, backgroundColor: colors[c.color], alignItems: 'center', justifyContent: 'center' }}>
                   <Text variant="heading" style={{ color: colors.onInkBlue, fontSize: 17, lineHeight: 22 }}>{c.name.charAt(0)}</Text>
                 </View>
                 <Text variant="small" weight="bold" numberOfLines={1} style={{ letterSpacing: 0.5 }}>{c.name.toUpperCase()}</Text>
-              </Pressable>
+              </Press>
             ))}
           </View>
         )}
@@ -378,7 +373,7 @@ export default function MoneyScreen() {
                 return (
                   // Rows glide to their new place when a paid one moves to the bottom.
                   <Animated.View key={i.expense.id} layout={MOVE} style={{ flexDirection: 'row', alignItems: 'center', marginLeft: -space[3] }}>
-                    <Pressable
+                    <Press
                       accessibilityRole="checkbox" accessibilityState={{ checked: i.paid }}
                       accessibilityLabel={`${i.expense.name}, ${formatPeso(i.expense.amount_centavos)}, mark ${i.paid ? 'not paid' : 'paid'}`}
                       onPress={() => tickFixed(i)}
@@ -390,7 +385,7 @@ export default function MoneyScreen() {
                           </Animated.View>
                         )}
                       </View>
-                    </Pressable>
+                    </Press>
                     <View style={{ flex: 1, gap: 2 }}>
                       <Text weight={i.paid ? 'medium' : 'semi'} style={i.paid ? { color: colors.faint, textDecorationLine: 'line-through' } : undefined}>{i.expense.name}</Text>
                       {!i.paid && <Text variant="label" style={{ color: i.dueIn < 0 ? colors.red : i.dueIn <= 3 ? colors.amber : colors.muted }}>{dueLabel(i)}</Text>}
@@ -416,9 +411,9 @@ export default function MoneyScreen() {
                   <Text weight="semi">Looks like a transfer: {formatPeso(p.out.amount_centavos)}</Text>
                   <Text variant="label" muted>{accountById.get(p.out.account_id ?? '')?.name} → {accountById.get(p.into.account_id ?? '')?.name}</Text>
                 </View>
-                <Pressable accessibilityRole="button" onPress={() => linkTransfer(p.out, p.into)} style={{ minHeight: 44, paddingHorizontal: space[4], borderRadius: 22, backgroundColor: colors.inkBlue, justifyContent: 'center' }}>
+                <Press accessibilityRole="button" onPress={() => linkTransfer(p.out, p.into)} style={{ minHeight: 44, paddingHorizontal: space[4], borderRadius: 22, backgroundColor: colors.inkBlue, justifyContent: 'center' }}>
                   <Text variant="label" weight="bold" style={{ color: colors.onInkBlue }}>Link</Text>
-                </Pressable>
+                </Press>
               </View>
             ))}
             {inbox.filter((t) => !paired.has(t.id)).map((t) => row(t, { label: 'Confirm', onPress: () => (t.account_id ? confirm(t) : setSheet({ kind: 'tx', tx: t })) }))}
@@ -472,7 +467,6 @@ export default function MoneyScreen() {
           <Text variant="label" muted>No transactions in {shown.name} yet. Its balance is the opening balance, {formatPeso(shown.opening_balance_centavos)}.</Text>
         ) : days.length === 0 ? (
           <Card style={{ alignItems: 'center', paddingVertical: space[8] }}>
-            <Mascot mood="sleepy" size={128} />
             <Text muted style={{ textAlign: 'center' }}>No transactions yet. Add one above.</Text>
           </Card>
         ) : days.map((d) => (
@@ -498,13 +492,13 @@ export default function MoneyScreen() {
           style={{ position: 'absolute', left: space[4], right: space[4], bottom: insets.bottom + 100, flexDirection: 'row', alignItems: 'center', gap: space[3],
             paddingLeft: space[5], paddingRight: space[2], paddingVertical: space[2], borderRadius: radius.pill, borderWidth: 1, borderColor: colors.line, backgroundColor: colors.raised }}>
           <Text variant="label" numberOfLines={1} style={{ flex: 1 }}>Log what you ate{ate.query ? ` at ${ate.query}` : ''}?</Text>
-          <Pressable accessibilityRole="button" onPress={() => { const q = ate.query; setAte(null); router.navigate({ pathname: '/health', params: { log: String(Date.now()), q } }); }}
+          <Press accessibilityRole="button" onPress={() => { const q = ate.query; setAte(null); router.navigate({ pathname: '/health', params: { log: String(Date.now()), q } }); }}
             style={({ pressed }) => ({ minHeight: 40, paddingHorizontal: space[4], borderRadius: radius.pill, backgroundColor: colors.inkBlue, justifyContent: 'center', opacity: pressed ? 0.7 : 1 })}>
             <Text variant="label" weight="bold" style={{ color: colors.onInkBlue }}>Log food</Text>
-          </Pressable>
-          <Pressable accessibilityRole="button" accessibilityLabel="Not now" onPress={() => setAte(null)} hitSlop={4} style={{ width: 40, height: 40, alignItems: 'center', justifyContent: 'center' }}>
+          </Press>
+          <Press accessibilityRole="button" accessibilityLabel="Not now" onPress={() => setAte(null)} hitSlop={4} style={{ width: 40, height: 40, alignItems: 'center', justifyContent: 'center' }}>
             <Text weight="semi" muted>✕</Text>
-          </Pressable>
+          </Press>
         </Animated.View>
       )}
       <Confetti shot={party.shot} origin={party.origin} amount={party.amount} />

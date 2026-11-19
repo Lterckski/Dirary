@@ -1,6 +1,7 @@
 /** Small animated pieces for numbers and bars: a progress bar that slides, and a floating "−₱130" after a change. */
 import { useEffect, useRef, useState } from 'react';
-import { Pressable, View } from 'react-native';
+import { View } from 'react-native';
+import { Press } from '@/components/press';
 import Animated, { ReduceMotion, interpolate, useAnimatedStyle, useReducedMotion, useSharedValue, withTiming } from 'react-native-reanimated';
 import { colors, radius } from '@dirary/ui';
 import { formatPeso } from '@dirary/shared';
@@ -79,10 +80,10 @@ export function Segmented<T extends string>({ label, options, value, onChange }:
       {options.map((o) => {
         const on = o.value === value;
         return (
-          <Pressable key={o.value} accessibilityRole="radio" accessibilityState={{ selected: on }} onPress={() => onChange(o.value)}
+          <Press key={o.value} accessibilityRole="radio" accessibilityState={{ selected: on }} onPress={() => onChange(o.value)}
             style={{ flex: 1, minHeight: 44, borderRadius: 999, alignItems: 'center', justifyContent: 'center' }}>
             <Text weight={on ? 'bold' : 'semi'} style={{ color: on ? colors.onInkBlue : colors.muted }}>{o.label}</Text>
-          </Pressable>
+          </Press>
         );
       })}
     </View>

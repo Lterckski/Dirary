@@ -1,15 +1,17 @@
-/** Health → Workouts on the phone: today's workout, the week, steps, progress and routines. */
-import { useMemo, useState } from 'react';
-import { Pressable, TextInput, View } from 'react-native';
+/** Health → Workouts on the phone: today's workout, the week, your program (gym or home), steps, progress and routines. */
+import { useEffect, useMemo, useState } from 'react';
+import { useLocalSearchParams } from 'expo-router';
+import { TextInput, View } from 'react-native';
+import { Press } from '@/components/press';
 import Svg, { Circle, G, Line, Path, Text as SvgText } from 'react-native-svg';
 import { colors, space } from '@dirary/ui';
 import {
   STARTER_EXERCISES, WEEKDAY_NAME, WEEKDAY_SHORT, WEEK_ORDER, changeLabel, exerciseProgress, formatKg, lastSets, loggedExercises, localDate, parseKg, planOf,
   routineMinutes, setsLabel, targetLabel, todaysWorkout, weekCount, weekStrip, weekdaysLabel, weekdaysOf, weekdaysText, weightSeries, workoutCoach,
+  isProgramRoutine,
   type Exercise, type PlanItem, type ProgressPoint, type Routine, type StarterExercise, type WorkoutSession,
 } from '@dirary/shared';
 
-import { Mascot } from '@/components/mascot';
 import { Chip } from '@/components/task-bits';
 import { Field, Sheet, Wrap } from '@/components/task-editor';
 import { Button, Card, Text, styles } from '@/components/ui';
@@ -17,7 +19,8 @@ import { WeekDots } from '@/components/week-dots';
 import { WorkoutSessionScreen } from '@/components/workout-session';
 import { StepsCard } from '@/components/steps-card';
 import { ExercisePicker } from '@/components/exercise-picker';
-import { addExercise, logWeight, removeRoutine, saveRoutine, startWorkout, useWorkoutsStore } from '@/lib/workouts-store';
+import { ProgramCard } from '@/components/program-card';
+import { addExercise, logWeight, removeRoutine, saveRoutine, startProgramDay, startWorkout, useWorkoutsStore } from '@/lib/workouts-store';
 
 const LABEL = { letterSpacing: 1.4, color: colors.muted } as const;
 const NUM = { fontVariant: ['tabular-nums' as const] };
@@ -25,10 +28,15 @@ type Open = { kind: 'routine'; routine: Routine | null } | { kind: 'weight' } | 
 
 export function WorkoutsTab() {
   const store = useWorkoutsStore();
-  const { exercises, routines, sessions, sets, metrics, loading } = store;
+  const { exercises, sessions, sets, metrics, loading } = store;
+  // Program days run on hidden routines; they're started from My program, not listed as your routines.
+  const routines = useMemo(() => store.routines.filter((r) => !isProgramRoutine(r)), [store.routines]);
   const [open, setOpen] = useState<Open>(null);
+  // Today's Start button starts the program day, then opens it here with ?session=.
+  const { session: opening } = useLocalSearchParams<{ session?: string }>();
+  useEffect(() => { if (opening) setOpen({ kind: 'session', id: opening }); }, [opening]);
   const today = localDate();
-  const { routine, session } = useMemo(() => todaysWorkout(routines, sessions, today), [routines, sessions, today]);
+  const { routine, session } = useMemo(() => todaysWorkout(store.routines, sessions, today), [store.routines, sessions, today]);
   const coach = workoutCoach({ routine, session, exercises, sets, sessions });
   const week = useMemo(() => weekStrip(routines, sessions, today), [routines, sessions, today]);
   const count = weekCount(week);
@@ -68,7 +76,6 @@ export function WorkoutsTab() {
           </Wrap>
         )}
         <View style={styles.row}>
-          <View style={{ width: 56, height: 56, borderRadius: 28, backgroundColor: colors.inkBlue, alignItems: 'center', justifyContent: 'center' }}><Mascot mood={coach.mood} size={48} /></View>
           <Text style={{ flex: 1 }} accessibilityLiveRegion="polite">{coach.line}</Text>
         </View>
       </Card>
@@ -81,6 +88,8 @@ export function WorkoutsTab() {
         <WeekDots days={week} />
       </Card>
 
+      <ProgramCard sessions={sessions} onStart={async (place, day) => { const s = await startProgramDay(place, day); if (s) setOpen({ kind: 'session', id: s.id }); }} />
+
       <StepsCard />
 
       <ProgressCard exercises={exercises} sets={sets} sessions={sessions} metrics={metrics} onLogWeight={() => setOpen({ kind: 'weight' })} />
@@ -92,11 +101,11 @@ export function WorkoutsTab() {
         </View>
         {routines.length === 0 && <Text muted>Make a routine, pick its days, and each one shows up in Tasks as well.</Text>}
         {routines.map((r) => (
-          <Pressable key={r.id} accessibilityRole="button" accessibilityHint="Edit this routine" onPress={() => setOpen({ kind: 'routine', routine: r })}
+          <Press key={r.id} accessibilityRole="button" accessibilityHint="Edit this routine" onPress={() => setOpen({ kind: 'routine', routine: r })}
             style={({ pressed }) => ({ minHeight: 56, paddingVertical: space[2], paddingHorizontal: 14, borderRadius: 18, borderWidth: 1, borderColor: colors.line, backgroundColor: colors.night, justifyContent: 'center', gap: 2, opacity: pressed ? 0.8 : 1 })}>
             <Text weight="semi">{r.name}</Text>
             <Text variant="label" muted>{weekdaysLabel(weekdaysOf(r))} · {planOf(r).length} exercise{planOf(r).length === 1 ? '' : 's'}</Text>
-          </Pressable>
+          </Press>
         ))}
       </Card>
 
@@ -208,10 +217,10 @@ function RoutineSheet({ routine, exercises, count, onClose }: { routine: Routine
           {WEEK_ORDER.map((d) => {
             const on = days.includes(d);
             return (
-              <Pressable key={d} accessibilityRole="button" accessibilityLabel={WEEKDAY_NAME[d]} accessibilityState={{ selected: on }} onPress={() => setDays((all) => (on ? all.filter((x) => x !== d) : [...all, d]))}
+              <Press key={d} accessibilityRole="button" accessibilityLabel={WEEKDAY_NAME[d]} accessibilityState={{ selected: on }} onPress={() => setDays((all) => (on ? all.filter((x) => x !== d) : [...all, d]))}
                 style={{ width: 42, height: 42, borderRadius: 21, alignItems: 'center', justifyContent: 'center', borderWidth: 1, borderColor: on ? colors.inkBlue : colors.line, backgroundColor: on ? colors.inkBlue : colors.raised }}>
                 <Text weight="bold" style={{ color: on ? colors.onInkBlue : colors.text }}>{WEEKDAY_SHORT[d]}</Text>
-              </Pressable>
+              </Press>
             );
           })}
         </View>
@@ -224,9 +233,9 @@ function RoutineSheet({ routine, exercises, count, onClose }: { routine: Routine
             {numberInput('Sets', String(it.sets), (t) => change(i, { sets: Math.max(1, Math.min(20, Number(t) || 1)) }))}
             <Text muted>×</Text>
             {numberInput('Reps, blank for as many as you can', it.reps === null ? '' : String(it.reps), (t) => change(i, { reps: t.trim() ? Math.max(1, Math.min(100, Number(t) || 1)) : null }), 'max')}
-            <Pressable accessibilityRole="button" accessibilityLabel={`Remove ${nameOf(it.exercise_id)}`} onPress={() => setItems((all) => all.filter((_, j) => j !== i))} hitSlop={6} style={{ width: 36, height: 44, alignItems: 'center', justifyContent: 'center' }}>
+            <Press accessibilityRole="button" accessibilityLabel={`Remove ${nameOf(it.exercise_id)}`} onPress={() => setItems((all) => all.filter((_, j) => j !== i))} hitSlop={6} style={{ width: 36, height: 44, alignItems: 'center', justifyContent: 'center' }}>
               <Text weight="semi" muted>✕</Text>
-            </Pressable>
+            </Press>
           </View>
         ))}
         {adding ? (
@@ -236,17 +245,17 @@ function RoutineSheet({ routine, exercises, count, onClose }: { routine: Routine
             setAdding(false);
           }} />
         ) : (
-          <Pressable accessibilityRole="button" onPress={() => setAdding(true)} style={{ minHeight: 48, borderRadius: 14, borderWidth: 1.5, borderStyle: 'dashed', borderColor: colors.line, alignItems: 'center', justifyContent: 'center' }}>
+          <Press accessibilityRole="button" onPress={() => setAdding(true)} style={{ minHeight: 48, borderRadius: 14, borderWidth: 1.5, borderStyle: 'dashed', borderColor: colors.line, alignItems: 'center', justifyContent: 'center' }}>
             <Text weight="semi" muted>+ Add an exercise</Text>
-          </Pressable>
+          </Press>
         )}
       </Field>
       {problem && <Text variant="label" style={{ color: colors.red }} accessibilityRole="alert">{problem}</Text>}
       <Button primary label="Save" onPress={save} />
       {routine && (
-        <Pressable accessibilityRole="button" onPress={() => { onClose(); removeRoutine(routine); }} style={{ minHeight: 48, alignItems: 'center', justifyContent: 'center' }}>
+        <Press accessibilityRole="button" onPress={() => { onClose(); removeRoutine(routine); }} style={{ minHeight: 48, alignItems: 'center', justifyContent: 'center' }}>
           <Text weight="semi" style={{ color: colors.red }}>Delete routine</Text>
-        </Pressable>
+        </Press>
       )}
     </Sheet>
   );

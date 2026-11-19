@@ -1,7 +1,8 @@
 /** A workout in progress, full screen: one exercise at a time, sets prefilled from last time, and a rest timer. */
 import * as Haptics from 'expo-haptics';
 import { useEffect, useMemo, useState } from 'react';
-import { Pressable, ScrollView, TextInput, View } from 'react-native';
+import { ScrollView, TextInput, View } from 'react-native';
+import { Press } from '@/components/press';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Svg, { Circle, Path } from 'react-native-svg';
 import { colors, space } from '@dirary/ui';
@@ -53,10 +54,10 @@ export function WorkoutSessionScreen({ session, store, onClose }: { session: Wor
     <PopUp onClose={onClose} navigationBarTranslucent>
       <View style={[styles.screen, { paddingTop: insets.top + space[3] }]}>
         <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: space[5] }}>
-          <Pressable accessibilityRole="button" accessibilityLabel="Back to Health" onPress={onClose} hitSlop={4}
+          <Press accessibilityRole="button" accessibilityLabel="Back to Health" onPress={onClose} hitSlop={4}
             style={{ width: 48, height: 48, borderRadius: 24, backgroundColor: colors.raised, alignItems: 'center', justifyContent: 'center' }}>
             <Svg width={20} height={20} viewBox="0 0 24 24"><Path d="M15 5l-7 7 7 7" fill="none" stroke={colors.text} strokeWidth={2.2} strokeLinecap="round" strokeLinejoin="round" /></Svg>
-          </Pressable>
+          </Press>
           <View style={{ alignItems: 'center' }}>
             <Text variant="small" weight="bold" style={{ letterSpacing: 1.4, color: colors.muted }}>{session.name.toUpperCase()}</Text>
             <Text weight="semi" style={NUM} accessibilityLabel={`Time so far ${elapsed}`}>{elapsed}</Text>
@@ -76,23 +77,23 @@ export function WorkoutSessionScreen({ session, store, onClose }: { session: Wor
           {restEnd && <RestTimer end={restEnd} onChange={rest} />}
 
           {next && (
-            <Pressable accessibilityRole="button" onPress={() => setAt(at + 1)}
+            <Press accessibilityRole="button" onPress={() => setAt(at + 1)}
               style={({ pressed }) => ({ flexDirection: 'row', alignItems: 'center', gap: space[3], padding: space[4], borderRadius: 22, borderWidth: 1, borderColor: colors.line, backgroundColor: colors.surface, opacity: pressed ? 0.8 : 1 })}>
               <View style={{ flex: 1, gap: 2 }}>
                 <Text variant="label" muted>Up next</Text>
                 <Text weight="semi">{nameOf(next.exercise_id)} · {targetLabel(next)}</Text>
               </View>
               <Svg width={20} height={20} viewBox="0 0 24 24"><Path d="M9 5l7 7-7 7" fill="none" stroke={colors.muted} strokeWidth={2.2} strokeLinecap="round" strokeLinejoin="round" /></Svg>
-            </Pressable>
+            </Press>
           )}
 
           {adding ? (
             <ExercisePicker exercises={store.exercises} onCancel={items.length ? () => setAdding(false) : undefined}
               onPick={(ex) => { setExtra((all) => [...all, { exercise_id: ex.id, sets: 3, reps: 10 }]); setAt(items.length); setAdding(false); }} />
           ) : (
-            <Pressable accessibilityRole="button" onPress={() => setAdding(true)} style={{ minHeight: 52, borderRadius: 18, borderWidth: 1.5, borderStyle: 'dashed', borderColor: colors.line, alignItems: 'center', justifyContent: 'center' }}>
+            <Press accessibilityRole="button" onPress={() => setAdding(true)} style={{ minHeight: 52, borderRadius: 18, borderWidth: 1.5, borderStyle: 'dashed', borderColor: colors.line, alignItems: 'center', justifyContent: 'center' }}>
               <Text weight="semi" muted>+ Add an exercise</Text>
-            </Pressable>
+            </Press>
           )}
         </ScrollView>
       </View>
@@ -150,19 +151,19 @@ function ExerciseCard({ store, session, item, index, total, name, onLogged }: {
             <Text style={{ color: colors.faint }}>×</Text>
             {field(`Set ${i + 1} reps`, done ? String(done.reps) : row.reps, 'reps', !!done, (t) => edit(i, 'reps', t), 'number-pad')}
             <View style={{ flex: 1 }} />
-            <Pressable accessibilityRole="checkbox" accessibilityState={{ checked: !!done }} accessibilityLabel={`Set ${i + 1} done`} onPress={() => tick(i)} hitSlop={4}
+            <Press accessibilityRole="checkbox" accessibilityState={{ checked: !!done }} accessibilityLabel={`Set ${i + 1} done`} onPress={() => tick(i)} hitSlop={4}
               style={{ width: 48, height: 48, alignItems: 'center', justifyContent: 'center' }}>
               <View style={{ width: 30, height: 30, borderRadius: 10, borderWidth: done ? 0 : 2.5, borderColor: colors.inkBlue, backgroundColor: done ? colors.inkBlue : 'transparent', alignItems: 'center', justifyContent: 'center' }}>
                 {done && <Svg width={16} height={16} viewBox="0 0 16 16"><Path d="M3 8.5 6.5 12 13 4.5" fill="none" stroke={colors.onInkBlue} strokeWidth={2.6} strokeLinecap="round" strokeLinejoin="round" /></Svg>}
               </View>
-            </Pressable>
+            </Press>
           </View>
         );
       })}
-      <Pressable accessibilityRole="button" onPress={() => setRows((all) => [...all, all[all.length - 1] ?? { kg: '0', reps: '10' }])}
+      <Press accessibilityRole="button" onPress={() => setRows((all) => [...all, all[all.length - 1] ?? { kg: '0', reps: '10' }])}
         style={{ minHeight: 44, borderRadius: 14, borderWidth: 1.5, borderStyle: 'dashed', borderColor: colors.line, alignItems: 'center', justifyContent: 'center' }}>
         <Text variant="label" weight="semi" muted>+ Add a set</Text>
-      </Pressable>
+      </Press>
     </View>
   );
 }

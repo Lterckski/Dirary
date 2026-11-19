@@ -1,5 +1,6 @@
 import { useState, type ReactNode } from 'react';
-import { Pressable, ScrollView, TextInput, View } from 'react-native';
+import { ScrollView, TextInput, View } from 'react-native';
+import { Press } from '@/components/press';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { colors, space } from '@dirary/ui';
 import {
@@ -111,9 +112,9 @@ export function TaskEditor({ task, lists, onClose, onSave, onDelete }: { task: T
       </Field>
       {problem && <Text variant="label" style={{ color: colors.red }} accessibilityRole="alert">{problem}</Text>}
       <Button primary label="Save" onPress={save} />
-      <Pressable accessibilityRole="button" onPress={onDelete} style={{ minHeight: 48, alignItems: 'center', justifyContent: 'center' }}>
+      <Press accessibilityRole="button" onPress={onDelete} style={{ minHeight: 48, alignItems: 'center', justifyContent: 'center' }}>
         <Text weight="semi" style={{ color: colors.red }}>Delete task</Text>
-      </Pressable>
+      </Press>
       {picking === 'date' && <DatePickerSheet value={date} onPick={setDate} onClear={() => { setDate(null); setTime(null); }} onClose={() => setPicking(null)} />}
       {picking === 'time' && <TimePickerSheet value={time} onPick={pickTime} onClear={() => setTime(null)} onClose={() => setPicking(null)} />}
     </Sheet>
@@ -142,9 +143,9 @@ export function ListsEditor({ lists, onClose, onAdd, onRename, onDelete }: {
           <TextInput
             accessibilityLabel={`Name of list ${l.name}`} style={[styles.input, { flex: 1 }]} defaultValue={l.name} maxLength={40}
             onEndEditing={(e) => { const next = e.nativeEvent.text.trim(); if (next && next !== l.name) onRename(l, next); }} />
-          <Pressable accessibilityRole="button" accessibilityLabel={`Delete list ${l.name}`} onPress={() => onDelete(l)} style={{ minHeight: 48, justifyContent: 'center', paddingHorizontal: space[2] }}>
+          <Press accessibilityRole="button" accessibilityLabel={`Delete list ${l.name}`} onPress={() => onDelete(l)} style={{ minHeight: 48, justifyContent: 'center', paddingHorizontal: space[2] }}>
             <Text weight="semi" style={{ color: colors.red }}>Delete</Text>
-          </Pressable>
+          </Press>
         </View>
       ))}
       {lists.length > 0 && <Text variant="label" muted>Deleting a list keeps its tasks. They move to the Inbox.</Text>}

@@ -3,7 +3,8 @@ import * as Haptics from 'expo-haptics';
 import { useLocalSearchParams } from 'expo-router';
 import { useEffect, useMemo, useRef, useState, type ComponentRef } from 'react';
 import Animated, { ReduceMotion, useAnimatedStyle, useSharedValue, withSequence, withSpring, withTiming } from 'react-native-reanimated';
-import { Pressable, ScrollView, TextInput, View } from 'react-native';
+import { ScrollView, TextInput, View } from 'react-native';
+import { Press } from '@/components/press';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { colors, radius, space } from '@dirary/ui';
 import {
@@ -253,9 +254,9 @@ export default function TasksScreen() {
         )}
         {groupTasks(dueToday, grouping, lists).map((g) => <Group key={g.key} title={g.title} sub>{g.tasks.map((t) => row(t, false))}</Group>)}
         {doneToday.length > 0 && (
-          <Pressable accessibilityRole="button" onPress={() => setView('done')} style={{ minHeight: 48, justifyContent: 'center', paddingHorizontal: 4 }}>
+          <Press accessibilityRole="button" onPress={() => setView('done')} style={{ minHeight: 48, justifyContent: 'center', paddingHorizontal: 4 }}>
             <Text variant="label" muted>{doneToday.length} done today · <Text variant="label" weight="semi" style={{ color: colors.inkBlue }}>View</Text></Text>
-          </Pressable>
+          </Press>
         )}
       </>
     );
@@ -347,14 +348,14 @@ export default function TasksScreen() {
           <Text variant="label" numberOfLines={1} style={{ flex: 1 }}>
             Log <Text variant="label" weight="bold" style={{ fontVariant: ['tabular-nums'] }}>{formatPeso(offer.amount)}</Text> for {offer.note}?
           </Text>
-          <Pressable accessibilityRole="button" onPress={logOffer}
+          <Press accessibilityRole="button" onPress={logOffer}
             style={({ pressed }) => ({ minHeight: 40, paddingHorizontal: space[4], borderRadius: radius.pill, backgroundColor: colors.inkBlue, justifyContent: 'center', opacity: pressed ? 0.7 : 1 })}>
             <Text variant="label" weight="bold" style={{ color: colors.onInkBlue }}>Log it</Text>
-          </Pressable>
-          <Pressable accessibilityRole="button" accessibilityLabel="Not now" onPress={() => setOffer(null)} hitSlop={4}
+          </Press>
+          <Press accessibilityRole="button" accessibilityLabel="Not now" onPress={() => setOffer(null)} hitSlop={4}
             style={{ width: 40, height: 40, alignItems: 'center', justifyContent: 'center' }}>
             <Text weight="semi" muted>✕</Text>
-          </Pressable>
+          </Press>
         </Animated.View>
       )}
       {logging && (

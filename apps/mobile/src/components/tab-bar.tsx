@@ -1,7 +1,7 @@
-import * as Haptics from 'expo-haptics';
 import type { BottomTabBarProps } from 'expo-router/js-tabs';
 import { useEffect, useState } from 'react';
-import { Keyboard, Modal, Pressable, View } from 'react-native';
+import { Keyboard, Modal, View } from 'react-native';
+import { Press } from '@/components/press';
 import Animated, { FadeIn, ReduceMotion, ZoomIn } from 'react-native-reanimated';
 import { Path, Svg } from 'react-native-svg';
 import { colors, radius, space } from '@dirary/ui';
@@ -29,7 +29,6 @@ export function FloatingTabBar({ state, descriptors, emitter, navigateToTab, ins
   const onMoney = current === 'money';
 
   function add() {
-    Haptics.selectionAsync().catch(() => {});
     if (onMoney) return requestAdd('money');
     if (current === 'health') return requestAdd('health'); // + starts a food search
     if (current === 'tasks') return requestAdd('tasks');
@@ -45,7 +44,7 @@ export function FloatingTabBar({ state, descriptors, emitter, navigateToTab, ins
     const color = focused ? colors.inkBlue : colors.muted;
     const label = typeof options?.title === 'string' ? options.title : route.name;
     return (
-      <Pressable
+      <Press
         key={route.key}
         accessibilityRole="tab"
         accessibilityState={{ selected: focused }}
@@ -57,7 +56,7 @@ export function FloatingTabBar({ state, descriptors, emitter, navigateToTab, ins
         style={{ flex: 1, height: BAR_HEIGHT, alignItems: 'center', justifyContent: 'center', gap: 4 }}>
         {options?.tabBarIcon?.({ focused, color, size: 24 })}
         <Text variant="small" weight={focused ? 'bold' : 'semi'} style={{ color }}>{label}</Text>
-      </Pressable>
+      </Press>
     );
   };
 
@@ -70,37 +69,38 @@ export function FloatingTabBar({ state, descriptors, emitter, navigateToTab, ins
         {tab(2)}
         {tab(3)}
       </View>
-      <Pressable
+      <Press
         accessibilityRole="button"
         accessibilityLabel={onMoney ? 'Add a transaction' : current === 'health' ? 'Log food' : current === 'tasks' ? 'Add a task' : 'Add something'}
         onPress={add}
-        style={({ pressed }) => ({
+        pressScale={0.88}
+        haptic="medium"
+        style={() => ({
           position: 'absolute', alignSelf: 'center', top: -22, width: FAB_SIZE, height: FAB_SIZE, borderRadius: FAB_SIZE / 2,
           borderWidth: 4, borderColor: colors.night, backgroundColor: colors.inkBlue, alignItems: 'center', justifyContent: 'center',
-          transform: [{ scale: pressed ? 0.95 : 1 }],
         })}>
         <Svg width={28} height={28} viewBox="0 0 28 28">
           <Path d="M14 5v18M5 14h18" fill="none" stroke={colors.onInkBlue} strokeWidth={3.2} strokeLinecap="round" />
         </Svg>
-      </Pressable>
+      </Press>
       <Modal visible={menu} transparent animationType="none" onRequestClose={() => setMenu(false)} statusBarTranslucent>
-        <Pressable accessibilityLabel="Close" onPress={() => setMenu(false)} style={{ flex: 1 }}>
+        <Press accessibilityLabel="Close" onPress={() => setMenu(false)} pressScale={1} haptic={false} style={{ flex: 1 }}>
           <Animated.View entering={FadeIn.duration(160).reduceMotion(ReduceMotion.System)} style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.45)' }} />
-        </Pressable>
+        </Press>
         <Animated.View
           entering={ZoomIn.duration(200).easing(EASE_OUT).withInitialValues({ transform: [{ scale: 0.94 }] }).reduceMotion(ReduceMotion.System)}
           accessibilityViewIsModal
           style={{ position: 'absolute', alignSelf: 'center', bottom: insets.bottom + space[3] + BAR_HEIGHT + space[4], width: 240, padding: space[2], gap: 2,
             borderRadius: 24, borderWidth: 1, borderColor: colors.line, backgroundColor: colors.raised, transformOrigin: 'bottom' }}>
           {ADD_KINDS.map(({ kind, label, hint }) => (
-            <Pressable key={kind} accessibilityRole="button" accessibilityHint={hint}
-              onPress={() => { setMenu(false); Haptics.selectionAsync().catch(() => {}); addTo(kind); }}
+            <Press key={kind} accessibilityRole="button" accessibilityHint={hint}
+              onPress={() => { setMenu(false); addTo(kind); }}
               style={({ pressed }) => ({ minHeight: 52, paddingHorizontal: space[4], borderRadius: 16, flexDirection: 'row', alignItems: 'center', gap: space[3], backgroundColor: pressed ? colors.surface : 'transparent' })}>
               <View style={{ width: 30, height: 30, borderRadius: 15, backgroundColor: colors.inkBlue, alignItems: 'center', justifyContent: 'center' }}>
                 <Svg width={14} height={14} viewBox="0 0 16 16"><Path d="M8 3v10M3 8h10" fill="none" stroke={colors.onInkBlue} strokeWidth={2.4} strokeLinecap="round" /></Svg>
               </View>
               <Text weight="semi">{label}</Text>
-            </Pressable>
+            </Press>
           ))}
         </Animated.View>
       </Modal>

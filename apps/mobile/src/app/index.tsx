@@ -3,14 +3,15 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as Haptics from 'expo-haptics';
 import { router } from 'expo-router';
 import { useEffect, useMemo, useRef, useState, type ComponentRef } from 'react';
-import { Pressable, ScrollView, View } from 'react-native';
+import { ScrollView, View } from 'react-native';
+import { Press } from '@/components/press';
 import Animated from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Path, Svg } from 'react-native-svg';
 import { colors, radius, space } from '@dirary/ui';
 import {
   amountInTask, dayCoach, dayComplete, dayTotals, dayWins, dueLabel, fixedThisMonth, formatKcal, formatPeso, glassesOn, greeting, localDate,
-  planOf, routineMinutes, safeToSpend, taskWithoutAmount, todayView, todaysWorkout, topTasks, weekReview, weekStrip,
+  planOf, programOn, routineMinutes, safeToSpend, taskWithoutAmount, todayView, todaysWorkout, topTasks, weekReview, weekStrip,
   type Account, type Category, type DayWin, type Task,
 } from '@dirary/shared';
 
@@ -28,8 +29,10 @@ import { readAccounts, readCategories } from '@/lib/db';
 import { useHealthStore } from '@/lib/health-store';
 import { useMoneyStore } from '@/lib/money-store';
 import { CHECKED_MS, ENTER, LEAVE } from '@/lib/motion';
+import { WidgetCheck } from '@/components/widget-check';
 import { signOutAndClear, toggleTask, useTasksStore } from '@/lib/tasks-store';
-import { useWorkoutsStore } from '@/lib/workouts-store';
+import { startProgramDay, useWorkoutsStore } from '@/lib/workouts-store';
+import { readProgramPlace } from '@/components/program-card';
 
 const GREETING_NAME = 'Luther';
 const LABEL = { letterSpacing: 1.4, color: colors.muted } as const;
@@ -46,6 +49,7 @@ export default function TodayScreen() {
   const workouts = useWorkoutsStore();
   const insets = useSafeAreaInsets();
   const [reviewing, setReviewing] = useState(false);
+  const [checkingWidgets, setCheckingWidgets] = useState(false);
   const [, setTick] = useState(0);
   useEffect(() => {
     const timer = setInterval(() => setTick((n) => n + 1), 60_000); // keeps the greeting, the date and "in 2 hours" right
@@ -66,7 +70,15 @@ export default function TodayScreen() {
     routines: workouts.routines, sessions: workouts.sessions, day: today, today, toLocalDate: toLocal,
   }), [tasks.tasks, money.transactions, money.categories, health.logs, workouts.routines, workouts.sessions, today]);
 
-  const workoutName = workout.session?.name ?? workout.routine?.name ?? null;
+  // No routine or workout today: fall back to what My program has on this day.
+  const program = programOn(today);
+  const fromProgram = !workout.session && !workout.routine;
+  const workoutName = workout.session?.name ?? workout.routine?.name ?? (program.kind === 'lift' ? program.name : null);
+  async function startWorkoutTile() {
+    if (!fromProgram || program.kind !== 'lift') return addTo('workout');
+    const started = await startProgramDay(await readProgramPlace(), program.day);
+    router.navigate({ pathname: '/health', params: { tab: 'workouts', ...(started ? { session: started.id } : {}) } });
+  }
   const input = { tasks: view, safe, fixed, food, goals: health.goals, hour, workout: { name: workoutName, done: !!workout.session?.done_at, started: !!workout.session?.started_at } };
   const coach = dayCoach(input, pesos);
   const wins = dayWins(input, pesos);
@@ -161,7 +173,7 @@ export default function TodayScreen() {
           <Text variant="small" weight="bold" style={{ color: colors.onInkBlue, letterSpacing: 1.3 }}>{now.toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' }).toUpperCase()}</Text>
           <Text variant="title" accessibilityRole="header" style={{ color: colors.onInkBlue }}>{greeting(hour)}, {GREETING_NAME}</Text>
           <Text weight="semi" accessibilityLiveRegion="polite" style={{ color: colors.onInkBlue, marginRight: 96 }}>{loading ? 'Getting your day ready…' : coach.line}</Text>
-          <View pointerEvents="none" accessibilityElementsHidden importantForAccessibility="no-hide-descendants" style={{ position: 'absolute', right: space[6], bottom: 22 }}>
+          <View pointerEvents="none" accessibilityElementsHidden importantForAccessibility="no-hide-descendants" style={{ position: 'absolute', right: space[6], bottom: 36 }}>
             <Mascot mood={loading ? 'happy' : complete ? 'cheer' : coach.mood} size={96} />
           </View>
         </View>
@@ -185,9 +197,9 @@ export default function TodayScreen() {
           <Card>
             <View style={[styles.row, { justifyContent: 'space-between' }]}>
               <Text variant="small" weight="bold" style={LABEL}>TASKS</Text>
-              <Pressable accessibilityRole="link" accessibilityHint="Opens Tasks" onPress={() => router.navigate('/tasks')} hitSlop={12}>
+              <Press accessibilityRole="link" accessibilityHint="Opens Tasks" onPress={() => router.navigate('/tasks')} hitSlop={12}>
                 <Text variant="label" weight="semi" style={[NUM, { color: colors.inkBlue }]}>{view.total === 0 ? 'Open' : `${view.done} of ${view.total} done`}</Text>
-              </Pressable>
+              </Press>
             </View>
             {shown.length === 0 ? (
               <Text muted>{view.total > 0 ? 'Everything due today is done.' : 'Nothing due today.'}</Text>
@@ -249,17 +261,18 @@ export default function TodayScreen() {
               <Text variant="small" weight="bold" style={LABEL}>WORKOUT</Text>
               <Text variant="label" muted style={NUM}>{week.workoutsDone} of {week.workoutsPlanned} this week</Text>
             </View>
-            <Text variant="title" style={workout.session?.done_at ? { color: colors.inkBlue } : undefined}>{workoutName ?? 'Rest day'}</Text>
+            <Text variant="title" style={workout.session?.done_at ? { color: colors.inkBlue } : undefined}>{workoutName ?? (program.kind === 'bjj' ? program.name : 'Rest day')}</Text>
             <Text variant="label" muted>
-              {workout.session?.done_at ? 'Done. Nice work.' : plan.length ? `${plan.length} exercise${plan.length === 1 ? '' : 's'} · about ${routineMinutes(plan)} min` : workout.session ? 'Under way' : 'Recovery counts too.'}
+              {fromProgram ? (program.kind === 'lift' ? `Day ${program.day} of My program · ${program.exercises} exercises` : program.note ?? 'Recovery counts too.')
+                : workout.session?.done_at ? 'Done. Nice work.' : plan.length ? `${plan.length} exercise${plan.length === 1 ? '' : 's'} · about ${routineMinutes(plan)} min` : workout.session ? 'Under way' : 'Recovery counts too.'}
             </Text>
             <WeekDots days={strip} size={30} />
             <View style={{ alignItems: 'flex-end' }}>
-              <Button primary={!!workoutName && !workout.session?.done_at} label={workout.session?.done_at || !workoutName ? 'Open Workouts' : workout.session?.started_at ? 'Continue' : 'Start'} onPress={() => addTo('workout')} />
+              <Button primary={!!workoutName && !workout.session?.done_at} label={workout.session?.done_at || !workoutName ? 'Open Workouts' : workout.session?.started_at ? 'Continue' : 'Start'} onPress={startWorkoutTile} />
             </View>
           </Card>
 
-          <Pressable accessibilityRole="button" accessibilityLabel="Open the weekly review" onPress={() => setReviewing(true)} style={({ pressed }) => ({ opacity: pressed ? 0.85 : 1 })}>
+          <Press accessibilityRole="button" accessibilityLabel="Open the weekly review" onPress={() => setReviewing(true)} style={({ pressed }) => ({ opacity: pressed ? 0.85 : 1 })}>
             <Card>
               <View style={[styles.row, { justifyContent: 'space-between' }]}>
                 <Text variant="small" weight="bold" style={LABEL}>THIS WEEK</Text>
@@ -272,10 +285,11 @@ export default function TodayScreen() {
                 <Figure label="Food streak" value={`${week.streak} day${week.streak === 1 ? '' : 's'}`} />
               </View>
             </Card>
-          </Pressable>
+          </Press>
 
           <View style={{ alignItems: 'center', gap: space[3], paddingTop: space[2] }}>
             <Text variant="label" muted style={{ textAlign: 'center' }}>Export your data or check the weekly backup from Dirary on the web, under Your data.</Text>
+            <Button label="Widget check" onPress={() => setCheckingWidgets(true)} />
             <Button label="Sign out" onPress={() => { signOutAndClear(); }} />
           </View>
         </View>
@@ -288,19 +302,20 @@ export default function TodayScreen() {
           <Text variant="label" numberOfLines={1} style={{ flex: 1 }}>
             Log <Text variant="label" weight="bold" style={NUM}>{formatPeso(offer.amount)}</Text> for {offer.note}?
           </Text>
-          <Pressable accessibilityRole="button" onPress={logOffer}
+          <Press accessibilityRole="button" onPress={logOffer}
             style={({ pressed }) => ({ minHeight: 40, paddingHorizontal: space[4], borderRadius: radius.pill, backgroundColor: colors.inkBlue, justifyContent: 'center', opacity: pressed ? 0.7 : 1 })}>
             <Text variant="label" weight="bold" style={{ color: colors.onInkBlue }}>Log it</Text>
-          </Pressable>
-          <Pressable accessibilityRole="button" accessibilityLabel="Not now" onPress={() => setOffer(null)} hitSlop={4} style={{ width: 40, height: 40, alignItems: 'center', justifyContent: 'center' }}>
+          </Press>
+          <Press accessibilityRole="button" accessibilityLabel="Not now" onPress={() => setOffer(null)} hitSlop={4} style={{ width: 40, height: 40, alignItems: 'center', justifyContent: 'center' }}>
             <Text weight="semi" muted>✕</Text>
-          </Pressable>
+          </Press>
         </Animated.View>
       )}
       {logging && (
         <TransactionEditor tx={null} direction="out" amount={logging.amount} note={logging.note}
           accounts={logging.accounts} categories={logging.categories} onClose={() => setLogging(null)} />
       )}
+      {checkingWidgets && <WidgetCheck onClose={() => setCheckingWidgets(false)} />}
       {reviewing && (
         <WeekReviewScreen tasks={tasks.tasks} transactions={money.transactions} categories={money.categories} logs={health.logs}
           routines={workouts.routines} sessions={workouts.sessions} onClose={() => setReviewing(false)} />
