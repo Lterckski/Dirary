@@ -8,7 +8,7 @@ import * as Notifications from 'expo-notifications';
 import { router } from 'expo-router';
 import { Platform } from 'react-native';
 import { colors } from '@dirary/ui';
-import { comebackNudges, dayNudges, inkNote, localDate, reminderDue, type DayNudgeInput, type PlannedNudge, type Task } from '@dirary/shared';
+import { comebackNudges, dayNudges, inkNote, localDate, reminderDue, SNOOZE_MINUTES, type DayNudgeInput, type PlannedNudge, type Task } from '@dirary/shared';
 
 /** Android fixes a channel's sound when it is made, so the bark needs its own channel. */
 const CHANNEL = 'ink-bark-2';
@@ -18,6 +18,11 @@ const BARK = 'bark.wav';
 /** Android limits how many alarms an app may hold; the soonest ones matter most. */
 const MAX_SCHEDULED = 50;
 const LAST_OPENED = 'ink-last-opened';
+/** Task reminders carry two buttons: remind me again in 15 minutes, or cancel. */
+const TASK_CATEGORY = 'task-reminder';
+const SNOOZE = 'snooze';
+const CANCEL = 'cancel';
+const HANDLED_ACTIONS = 'ink-handled-actions';
 
 Notifications.setNotificationHandler({
   handleNotification: async () => ({ shouldShowBanner: true, shouldShowList: true, shouldPlaySound: true, shouldSetBadge: false }),
@@ -36,12 +41,20 @@ function ensureChannel() {
       lightColor: colors.inkBlue,
     });
     for (const old of OLD_CHANNELS) await Notifications.deleteNotificationChannelAsync(old).catch(() => {});
+    await Notifications.setNotificationCategoryAsync(TASK_CATEGORY, [
+      { identifier: SNOOZE, buttonTitle: `Remind me in ${SNOOZE_MINUTES} min`, options: { opensAppToForeground: false } },
+      { identifier: CANCEL, buttonTitle: 'Cancel', options: { opensAppToForeground: false, isDestructive: true } },
+    ]);
   })();
   return channelReady;
 }
 
 function content(title: string, body: string, data: Record<string, unknown>): Notifications.NotificationContentInput {
   return { title, body, data, sound: BARK, color: colors.inkBlue };
+}
+
+function taskContent(title: string, body: string, taskId: string): Notifications.NotificationContentInput {
+  return { ...content(title, body, { taskId, url: '/tasks' }), categoryIdentifier: TASK_CATEGORY };
 }
 
 export async function hasReminderPermission(): Promise<boolean> {
@@ -103,11 +116,18 @@ export async function refreshReminders(tasks: readonly Task[]): Promise<void> {
 
   // Only task reminders are replaced; the rest timer and Ink's nudges stay.
   await cancelPrefixed('task-');
+  // A snoozed reminder stays until its task is done or deleted.
+  const open = new Set(tasks.filter((t) => t.status === 'todo' && t.deleted_at === null).map((t) => t.id));
+  for (const scheduled of await Notifications.getAllScheduledNotificationsAsync()) {
+    if (scheduled.identifier.startsWith('snooze-') && !open.has(scheduled.identifier.slice('snooze-'.length))) {
+      await Notifications.cancelScheduledNotificationAsync(scheduled.identifier);
+    }
+  }
   for (const { task, at } of due) {
     const note = inkNote('task', { task: task.title }, `${task.id}:${task.remind_at}`);
     await Notifications.scheduleNotificationAsync({
       identifier: `task-${task.id}`,
-      content: content(note.title, note.body, { taskId: task.id, url: '/tasks' }),
+      content: taskContent(note.title, note.body, task.id),
       // An alarm clock alarm is never deferred to save battery, so the reminder rings on the minute.
       trigger: { type: Notifications.SchedulableTriggerInputTypes.DATE, date: at, channelId: CHANNEL, delivery: 'alarmClock' },
     });
@@ -154,17 +174,59 @@ export async function cancelRestAlert(): Promise<void> {
   await Notifications.cancelScheduledNotificationAsync(REST_ID).catch(() => {});
 }
 
+/**
+ * The buttons on a task reminder. "Remind me in 15 min" puts the same reminder back 15 minutes from now
+ * (with the buttons again); "Cancel" clears it. Runs in the background task when Dirary isn't open, and from
+ * the listener when it is. Android can hand the same press to both, or replay it later when the app opens,
+ * so each press is handled once.
+ */
+export async function handleReminderAction(response: Notifications.NotificationResponse): Promise<void> {
+  const { actionIdentifier, notification } = response;
+  if (actionIdentifier !== SNOOZE && actionIdentifier !== CANCEL) return;
+  const taskId = notification.request.content.data?.taskId;
+  if (typeof taskId !== 'string') return;
+  const key = `${notification.request.identifier}:${notification.date}:${actionIdentifier}`;
+  const handled: string[] = JSON.parse((await AsyncStorage.getItem(HANDLED_ACTIONS).catch(() => null)) ?? '[]');
+  if (handled.includes(key)) return;
+  await AsyncStorage.setItem(HANDLED_ACTIONS, JSON.stringify([key, ...handled].slice(0, 20))).catch(() => {});
+
+  await Notifications.dismissNotificationAsync(notification.request.identifier).catch(() => {});
+  const snoozeId = `snooze-${taskId}`;
+  if (actionIdentifier === CANCEL) {
+    await Notifications.cancelScheduledNotificationAsync(snoozeId).catch(() => {});
+    return;
+  }
+  await ensureChannel();
+  const { title, body } = notification.request.content;
+  await Notifications.scheduleNotificationAsync({
+    identifier: snoozeId,
+    content: taskContent(title ?? 'Ink', body ?? '', taskId),
+    trigger: {
+      type: Notifications.SchedulableTriggerInputTypes.DATE,
+      date: Date.now() + SNOOZE_MINUTES * 60_000,
+      channelId: CHANNEL,
+      delivery: 'alarmClock',
+    },
+  });
+}
+
 /** Tapping a notification opens the screen it is about. Returns the unsubscribe function. */
 export function openNotificationTaps(): () => void {
   const open = (response: Notifications.NotificationResponse | null) => {
-    const url = response?.notification.request.content.data?.url;
+    if (!response) return;
+    if (response.actionIdentifier !== Notifications.DEFAULT_ACTION_IDENTIFIER) {
+      void handleReminderAction(response);
+      return;
+    }
+    const url = response.notification.request.content.data?.url;
     if (typeof url !== 'string') return;
     // Older reminders carried a dirary:// link; the router wants the path.
     const path = url.startsWith('dirary://') ? `/${url.slice('dirary://'.length)}` : url;
     router.push(path as never);
   };
+  // Only a plain tap opens a screen on launch; a button press was handled when it was pressed.
   const last = Notifications.getLastNotificationResponse();
-  if (last) open(last);
+  if (last?.actionIdentifier === Notifications.DEFAULT_ACTION_IDENTIFIER) open(last);
   const sub = Notifications.addNotificationResponseReceivedListener(open);
   return () => sub.remove();
 }
