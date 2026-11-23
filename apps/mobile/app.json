@@ -48,7 +48,7 @@
       [
         "expo-camera",
         {
-          "cameraPermission": "Dirary uses the camera to scan food barcodes.",
+          "cameraPermission": "Dirary uses the camera to scan food barcodes and to recognise food in photos. Photos stay on your phone.",
           "microphonePermission": false,
           "recordAudioAndroid": false
         }

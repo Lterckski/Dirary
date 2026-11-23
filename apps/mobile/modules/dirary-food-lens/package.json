@@ -1,0 +1,7 @@
+{
+  "name": "dirary-food-lens",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Food camera: names the dish in a photo on the phone (Google's AIY food model through ML Kit), with no upload and no API.",
+  "main": "index.ts"
+}
