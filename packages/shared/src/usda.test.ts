@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { isBarcode, parseOffProduct, parseOffSearch, parseUsdaFoods } from './usda';
+import { isBarcode, parseFoodPhoto, parseOffProduct, parseOffSearch, parseUsdaFoods } from './usda';
 
 describe('parseUsdaFoods', () => {
   const data = {
@@ -52,5 +52,17 @@ describe('Open Food Facts search', () => {
     ] });
     expect(foods.map((f) => [f.key, f.name, f.kcal_per_100g])).toEqual([['off:0636261198653', 'Chicken siopao (Goldilocks)', 290]]);
     expect(parseOffSearch({})).toEqual([]);
+  });
+});
+
+describe('parseFoodPhoto', () => {
+  it('reads foods, drops impossible ones, and tells no food from a broken reply', () => {
+    expect(parseFoodPhoto({ food: true, items: [
+      { name: 'Sinigang na baboy', grams: 350.4, kcal: 280, protein_g: 22 },
+      { name: 'Rice', grams: 160, kcal: 210, protein_g: 4 },
+      { name: 'Impossible cake', grams: 10, kcal: 500, protein_g: 1 },
+    ] })).toEqual([{ name: 'Sinigang na baboy', grams: 350, kcal: 280, protein_g: 22 }, { name: 'Rice', grams: 160, kcal: 210, protein_g: 4 }]);
+    expect(parseFoodPhoto({ food: false, items: [] })).toEqual([]);
+    expect(parseFoodPhoto({ error: 'nope' })).toBeNull();
   });
 });

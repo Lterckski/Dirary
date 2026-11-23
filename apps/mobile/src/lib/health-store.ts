@@ -2,12 +2,13 @@
 import * as Crypto from 'expo-crypto';
 import { useCallback, useEffect, useState } from 'react';
 import {
-  FOODS_TABLE, FOOD_LOGS_TABLE, HEALTH_GOALS_TABLE, WATER_LOGS_TABLE, addDays, currentGoals, localDate, nutrition, offProductUrl, parseOffProduct, servingsOf, servingsText, waterTap,
-  type Food, type FoodLog, type HealthGoals, type Meal, type Serving, type StarterFood, type WaterLog,
+  FOODS_TABLE, FOOD_LOGS_TABLE, HEALTH_GOALS_TABLE, WATER_LOGS_TABLE, addDays, currentGoals, localDate, nutrition, offProductUrl, parseFoodPhoto, parseOffProduct, servingsOf, servingsText, waterTap,
+  type Food, type FoodLog, type HealthGoals, type Meal, type PhotoFood, type Serving, type StarterFood, type WaterLog,
 } from '@dirary/shared';
 
 import { readFoodLogs, readFoods, readHealthGoals, readWater, saveLocal } from './db';
 import { watchTables } from './realtime';
+import { supabase } from './supabase';
 import { subscribeStore, syncTasks } from './tasks-store';
 import { refreshWidgets } from '../widgets/refresh';
 
@@ -105,6 +106,32 @@ export async function lookUpBarcode(code: string, foods: readonly Food[]): Promi
   if (!res.ok) throw new Error(`Open Food Facts answered ${res.status}`);
   const starter = parseOffProduct(await res.json(), code);
   return starter ? { food: null, starter } : null;
+}
+
+/**
+ * The foods in a photo (base64 JPEG) with their portions and calories, from the food-photo Supabase function,
+ * which asks Gemini. [] when there's no food. Throws with a message to show when it can't ask.
+ */
+export async function lookAtPhoto(image: string): Promise<PhotoFood[]> {
+  if (!supabase) throw new Error('Sign in to use the food camera.');
+  const { data, error } = await supabase.functions.invoke('food-photo', { body: { image } });
+  if (error) {
+    const said = await (error as { context?: Response }).context?.json?.().catch(() => null);
+    throw new Error(typeof said?.error === 'string' ? said.error : 'Couldn’t reach the food camera. Check your connection.');
+  }
+  const found = parseFoodPhoto(data);
+  if (!found) throw new Error('The food camera gave a strange answer. Try again.');
+  return found;
+}
+
+/** Logs foods from a photo. Each becomes one of your foods (updated if you have one by that name), so search finds it next time. */
+export async function logPhotoFoods(items: readonly PhotoFood[], meal: Meal, foods: readonly Food[]): Promise<void> {
+  for (const item of items) {
+    const per100 = (n: number) => Math.round((n / item.grams) * 1000) / 10;
+    const existing = foods.find((f) => f.deleted_at === null && f.source === 'own' && f.name.toLowerCase() === item.name.toLowerCase()) ?? null;
+    const food = await saveFood({ name: item.name, kcal_per_100g: Math.min(900, per100(item.kcal)), protein_per_100g: Math.min(100, per100(item.protein_g)), servings: existing ? servingsOf(existing) : [] }, existing);
+    await logFood({ food, starter: null }, item.grams, meal, null);
+  }
 }
 
 /** Live foods, log, targets and water for the Health screen. */
