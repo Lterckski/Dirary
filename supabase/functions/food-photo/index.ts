@@ -17,7 +17,8 @@ const CORS = {
   'Access-Control-Allow-Methods': 'POST, OPTIONS',
 };
 
-const MODEL = 'gemini-flash-latest';
+// Tried in order: the free tier often answers "high demand" for one model while another is fine.
+const MODELS = ['gemini-3.5-flash', 'gemini-flash-lite-latest'];
 
 const PROMPT = `You are a nutrition assistant for someone in the Philippines. Look at this photo.
 If it shows no food or drink, answer food=false with no items.
@@ -26,20 +27,35 @@ Use the common Filipino dish name when there is one. For each item, estimate the
 and the calories (kcal) and protein (g) of that whole portion. Use typical Philippine recipes and serving sizes.`;
 
 const SCHEMA = {
-  type: 'OBJECT',
+  type: 'object',
   properties: {
-    food: { type: 'BOOLEAN' },
+    food: { type: 'boolean' },
     items: {
-      type: 'ARRAY',
+      type: 'array',
       items: {
-        type: 'OBJECT',
-        properties: { name: { type: 'STRING' }, grams: { type: 'NUMBER' }, kcal: { type: 'NUMBER' }, protein_g: { type: 'NUMBER' } },
+        type: 'object',
+        properties: { name: { type: 'string' }, grams: { type: 'number' }, kcal: { type: 'number' }, protein_g: { type: 'number' } },
         required: ['name', 'grams', 'kcal', 'protein_g'],
       },
     },
   },
   required: ['food', 'items'],
 };
+
+// Gemini's OpenAI-style endpoint: AI Studio's newer keys ("AQ.…") only work here, as a Bearer token.
+async function ask(key: string, model: string, image: string): Promise<Response> {
+  return await fetch('https://generativelanguage.googleapis.com/v1beta/openai/chat/completions', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${key}` },
+    signal: AbortSignal.timeout(45_000),
+    body: JSON.stringify({
+      model,
+      temperature: 0.2,
+      response_format: { type: 'json_schema', json_schema: { name: 'meal', schema: SCHEMA } },
+      messages: [{ role: 'user', content: [{ type: 'text', text: PROMPT }, { type: 'image_url', image_url: { url: `data:image/jpeg;base64,${image}` } }] }],
+    }),
+  });
+}
 
 const json = (body: unknown, status = 200) =>
   new Response(JSON.stringify(body), { status, headers: { ...CORS, 'Content-Type': 'application/json' } });
@@ -61,20 +77,19 @@ Deno.serve(async (req) => {
   // About 7 MB of JPEG; Gemini takes up to 20 MB inline.
   if (image.length < 100 || image.length > 10_000_000) return json({ error: 'Send a JPEG photo under 7 MB.' }, 400);
 
-  const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${MODEL}:generateContent`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json', 'x-goog-api-key': key },
-    body: JSON.stringify({
-      contents: [{ parts: [{ inline_data: { mime_type: 'image/jpeg', data: image } }, { text: PROMPT }] }],
-      generationConfig: { responseMimeType: 'application/json', responseSchema: SCHEMA, temperature: 0.2 },
-    }),
-  });
-  if (!res.ok) return json({ error: `Gemini answered ${res.status}.` }, res.status === 429 ? 429 : 502);
-  const data = await res.json();
-  const text = data?.candidates?.[0]?.content?.parts?.[0]?.text;
-  try {
-    return json(JSON.parse(text));
-  } catch {
-    return json({ error: 'Gemini gave no answer.' }, 502);
+  let status = 502;
+  for (const model of MODELS) {
+    const res = await ask(key, model, image).catch(() => null);
+    if (!res?.ok) {
+      status = res?.status ?? 504;
+      continue;
+    }
+    const data = await res.json();
+    try {
+      return json(JSON.parse(data?.choices?.[0]?.message?.content));
+    } catch {
+      status = 502;
+    }
   }
+  return json({ error: status === 429 ? 'The free Gemini limit is used up for today. Try again tomorrow.' : 'Gemini is busy right now. Try again in a minute.' }, status === 429 ? 429 : 502);
 });
