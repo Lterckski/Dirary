@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { isBarcode, parseOffProduct, parseUsdaFoods } from './usda';
+import { isBarcode, parseOffProduct, parseOffSearch, parseUsdaFoods } from './usda';
 
 describe('parseUsdaFoods', () => {
   const data = {
@@ -39,5 +39,18 @@ describe('Open Food Facts', () => {
   it('knows a barcode', () => {
     expect(isBarcode('4800092110222')).toBe(true);
     expect(isBarcode('12345')).toBe(false);
+  });
+});
+
+describe('Open Food Facts search', () => {
+  it('reads hits with brands as a list, skipping empty ones', () => {
+    const foods = parseOffSearch({ hits: [
+      { code: '0636261198653', product_name: 'Chicken siopao', brands: ['Goldilocks'], nutriments: { 'energy-kcal_100g': 290, proteins_100g: 9 } },
+      { code: '0071692002313', product_name: 'Adobo', nutriments: { 'energy-kcal_100g': 0, proteins_100g: 0 } },
+      { code: '04252986', product_name: 'Pancit Canton' },
+      { code: 'abc', product_name: 'Bad code', nutriments: { 'energy-kcal_100g': 100 } },
+    ] });
+    expect(foods.map((f) => [f.key, f.name, f.kcal_per_100g])).toEqual([['off:0636261198653', 'Chicken siopao (Goldilocks)', 290]]);
+    expect(parseOffSearch({})).toEqual([]);
   });
 });

@@ -48,7 +48,7 @@
       [
         "expo-camera",
         {
-          "cameraPermission": "Dirary uses the camera to scan food barcodes.",
+          "cameraPermission": "Dirary uses the camera to scan food barcodes and to recognise food in photos. Photos stay on your phone.",
           "microphonePermission": false,
           "recordAudioAndroid": false
         }
@@ -56,6 +56,11 @@
       [
         "react-native-android-widget",
         {
+          "fonts": [
+            "./assets/fonts/BricolageGrotesque_800ExtraBold.ttf",
+            "./assets/fonts/Inter_600SemiBold.ttf",
+            "./assets/fonts/Inter_700Bold.ttf"
+          ],
           "widgets": [
             {
               "name": "Day",

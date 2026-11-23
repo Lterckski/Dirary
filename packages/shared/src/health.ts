@@ -144,17 +144,18 @@ export function searchFoods(query: string, foods: readonly Food[], starters: rea
   const own = foods.filter((f) => f.deleted_at === null);
   const saved = new Set(own.map((f) => f.source_ref).filter(Boolean));
   const ownNames = new Set(own.map((f) => norm(f.name)));
-  const results: (FoodMatch & { rank: number })[] = [];
+  const results: (FoodMatch & { rank: number; order: number })[] = [];
   for (const food of own) {
     const s = score(food.name);
-    if (s !== null) results.push({ food, starter: null, name: food.name, source: food.source, rank: s });
+    if (s !== null) results.push({ food, starter: null, name: food.name, source: food.source, rank: s, order: 0 });
   }
-  for (const starter of starters) {
-    if (saved.has(starter.key) || ownNames.has(norm(starter.name))) continue;
+  // Starter foods keep their list order on a tie, so the picked everyday foods come before the rest of PhilFCT.
+  starters.forEach((starter, order) => {
+    if (saved.has(starter.key) || ownNames.has(norm(starter.name))) return;
     const s = score(starter.name);
-    if (s !== null) results.push({ food: null, starter, name: starter.name, source: starter.source, rank: s + 10 });
-  }
-  return results.sort((a, b) => a.rank - b.rank || a.name.localeCompare(b.name)).slice(0, limit).map(({ rank: _rank, ...m }) => m);
+    if (s !== null) results.push({ food: null, starter, name: starter.name, source: starter.source, rank: s + 10, order });
+  });
+  return results.sort((a, b) => a.rank - b.rank || a.order - b.order || a.name.localeCompare(b.name)).slice(0, limit).map(({ rank: _r, order: _o, ...m }) => m);
 }
 
 // ---- the day ----

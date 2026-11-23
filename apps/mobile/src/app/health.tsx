@@ -20,11 +20,13 @@ import { Button, Card, TAB_BAR_CLEARANCE, Text, styles } from '@/components/ui';
 import { useAddRequest } from '@/lib/add-bus';
 import { logFood, lookUpBarcode, removeFood, removeLog, saveFood, saveGoals, tapWater, updateLog, useHealthStore } from '@/lib/health-store';
 import { BarcodeScanner } from '@/components/barcode-scanner';
+import { FoodCamera } from '@/components/food-camera';
+import { foodLensAvailable } from '../../modules/dirary-food-lens';
 import { WorkoutsTab } from '@/components/workouts-tab';
 import { ENTER, LEAVE } from '@/lib/motion';
 import { TransactionEditor } from '@/components/money-editor';
 import { readAccounts, readCategories } from '@/lib/db';
-import { useUsdaSearch } from '@/lib/usda-search';
+import { useOnlineFoods } from '@/lib/online-foods';
 
 type Pick = { food: Food | null; starter: StarterFood | null };
 type Open =
@@ -32,6 +34,7 @@ type Open =
   | { kind: 'edit'; log: FoodLog }
   | { kind: 'food'; food: Food | null; name?: string; barcode?: string }
   | { kind: 'scan' }
+  | { kind: 'photo' }
   | { kind: 'goals' }
   | null;
 
@@ -63,9 +66,9 @@ export default function HealthScreen() {
   const coach = foodCoach(totals, goals, hour);
   const again = useMemo(() => recentFoods(logs, foods), [logs, foods]);
   const results = useMemo(() => searchFoods(query, foods, STARTER_FOODS, 6), [query, foods]);
-  const usda = useUsdaSearch(query);
-  // USDA foods you've already saved show up under your own foods instead.
-  const remote = usda.results.filter((u) => !foods.some((f) => f.source_ref === u.key)).slice(0, 6);
+  const online = useOnlineFoods(query);
+  // Online foods you've already saved show up under your own foods instead.
+  const remote = online.results.filter((u) => !foods.some((f) => f.source_ref === u.key));
   const glasses = glassesOn(water, today);
   const glassGoal = goals?.water_glasses ?? 8;
   const kcalLeft = goals?.kcal_target ? Math.round(goals.kcal_target - totals.kcal) : null;
@@ -202,6 +205,12 @@ export default function HealthScreen() {
                 style={{ flex: 1, minHeight: 48, color: colors.text, fontSize: 16 }} returnKeyType="search" autoCorrect={false}
                 onSubmitEditing={() => { const r = results[0]; if (r) choose({ food: r.food, starter: r.starter }); }} />
             </View>
+            {foodLensAvailable && (
+            <Press accessibilityRole="button" accessibilityLabel="Snap your food" onPress={() => { input.current?.blur(); setOpen({ kind: 'photo' }); }}
+              style={({ pressed }) => ({ width: 52, height: 52, borderRadius: 18, backgroundColor: colors.inkBlue, alignItems: 'center', justifyContent: 'center', opacity: pressed ? 0.8 : 1 })}>
+              <Svg width={24} height={24} viewBox="0 0 24 24"><Path d="M4 8h3l2-3h6l2 3h3v11H4z" fill="none" stroke={colors.onInkBlue} strokeWidth={2} strokeLinejoin="round" /><Circle cx={12} cy={13} r={3.5} fill="none" stroke={colors.onInkBlue} strokeWidth={2} /></Svg>
+            </Press>
+            )}
             <Press accessibilityRole="button" accessibilityLabel="Scan a barcode" onPress={() => { input.current?.blur(); setOpen({ kind: 'scan' }); }}
               style={({ pressed }) => ({ width: 52, height: 52, borderRadius: 18, backgroundColor: colors.inkBlue, alignItems: 'center', justifyContent: 'center', opacity: pressed ? 0.8 : 1 })}>
               <Svg width={24} height={24} viewBox="0 0 24 24"><Path d="M3 7V4h3M18 4h3v3M21 17v3h-3M6 20H3v-3M7 8v8M10 8v8M13 8v8M17 8v8" fill="none" stroke={colors.onInkBlue} strokeWidth={2} strokeLinecap="round" /></Svg>
@@ -221,10 +230,10 @@ export default function HealthScreen() {
                   <Press key={u.key} accessibilityRole="button" onPress={() => choose({ food: null, starter: u })}
                     style={({ pressed }) => ({ flexDirection: 'row', alignItems: 'center', gap: space[3], minHeight: 48, paddingHorizontal: space[3], borderRadius: 14, backgroundColor: pressed ? colors.surface : 'transparent' })}>
                     <Text weight="semi" style={{ flex: 1 }} numberOfLines={2}>{u.name}</Text>
-                    <Text variant="small" weight="bold" style={{ color: colors.muted, letterSpacing: 0.8 }}>USDA</Text>
+                    <Text variant="small" weight="bold" style={{ color: colors.muted, letterSpacing: 0.8 }}>{u.source === 'off' ? 'OFF' : FOOD_SOURCE_LABEL[u.source].toUpperCase()}</Text>
                   </Press>
                 ))}
-                {(usda.searching || usda.problem) && <Text variant="label" style={{ color: colors.faint, paddingHorizontal: space[3], paddingVertical: space[2] }}>{usda.problem ?? 'Searching USDA…'}</Text>}
+                {(online.searching || online.problem) && <Text variant="label" style={{ color: colors.faint, paddingHorizontal: space[3], paddingVertical: space[2] }}>{online.problem ?? 'Searching online…'}</Text>}
                 <Press accessibilityRole="button" onPress={() => { const name = query.trim(); setQuery(''); input.current?.blur(); setOpen({ kind: 'food', food: null, name }); }}
                   style={({ pressed }) => ({ minHeight: 48, justifyContent: 'center', paddingHorizontal: space[3], borderRadius: 14, backgroundColor: pressed ? colors.surface : 'transparent' })}>
                   <Text weight="semi" muted numberOfLines={1}>+ New food “{query.trim()}”</Text>
@@ -277,6 +286,7 @@ export default function HealthScreen() {
         onEditFood={open.pick.food ? () => setOpen({ kind: 'food', food: open.pick.food }) : undefined} onClose={() => setOpen(null)} />}
       {open?.kind === 'edit' && <EditLogSheet log={open.log} food={foods.find((f) => f.id === open.log.food_id) ?? null} onClose={() => setOpen(null)} />}
       {open?.kind === 'scan' && <BarcodeScanner onCode={scanned} onClose={() => setOpen(null)} />}
+      {open?.kind === 'photo' && <FoodCamera onClose={() => setOpen(null)} onPick={(search) => { setOpen(null); setQuery(search); input.current?.focus(); }} />}
       {open?.kind === 'food' && <FoodSheet food={open.food} name={open.name} barcode={open.barcode} onClose={() => setOpen(null)}
         onSaved={(food) => setOpen({ kind: 'log', pick: { food, starter: null }, meal: forMeal ?? undefined })} />}
       {open?.kind === 'goals' && <GoalsSheet goals={goals} onClose={() => setOpen(null)} />}

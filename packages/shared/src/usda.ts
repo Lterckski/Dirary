@@ -102,3 +102,25 @@ export function parseOffProduct(data: unknown, barcode: string): StarterFood | n
   const servings: Serving[] = servingGrams && servingGrams > 0 && servingGrams <= 5000 ? [{ label: '1 serving', grams: round1(servingGrams) }] : [];
   return { key: `off:${barcode}`, name: name.slice(0, 80), source: 'off', kcal_per_100g: round1(kcal), protein_per_100g: round1(protein), servings, barcode };
 }
+
+/** Open Food Facts text search (free, no key). Its server doesn't allow web pages to call it, so only the phone uses it. */
+export const offSearchUrl = (query: string): string =>
+  `https://search.openfoodfacts.org/search?q=${encodeURIComponent(query)}&page_size=15&fields=code,product_name,brands,nutriments,serving_quantity`;
+
+/**
+ * Open Food Facts search hits as foods to log. Hits without calories, or with nothing at all (0 kcal and
+ * 0 g protein, which is mostly missing data), are skipped.
+ */
+export function parseOffSearch(data: unknown): StarterFood[] {
+  const hits = (data as { hits?: unknown })?.hits;
+  if (!Array.isArray(hits)) return [];
+  const out: StarterFood[] = [];
+  for (const hit of hits as Record<string, unknown>[]) {
+    const code = String(hit?.code ?? '');
+    if (!isBarcode(code)) continue;
+    const brands = Array.isArray(hit.brands) ? hit.brands.join(',') : hit.brands;
+    const food = parseOffProduct({ product: { ...hit, brands } }, code);
+    if (food && (food.kcal_per_100g > 0 || food.protein_per_100g > 0)) out.push(food);
+  }
+  return out;
+}
