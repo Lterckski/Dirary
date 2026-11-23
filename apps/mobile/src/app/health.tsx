@@ -21,7 +21,6 @@ import { useAddRequest } from '@/lib/add-bus';
 import { logFood, lookUpBarcode, removeFood, removeLog, saveFood, saveGoals, tapWater, updateLog, useHealthStore } from '@/lib/health-store';
 import { BarcodeScanner } from '@/components/barcode-scanner';
 import { FoodCamera } from '@/components/food-camera';
-import { foodLensAvailable } from '../../modules/dirary-food-lens';
 import { WorkoutsTab } from '@/components/workouts-tab';
 import { ENTER, LEAVE } from '@/lib/motion';
 import { TransactionEditor } from '@/components/money-editor';
@@ -205,12 +204,10 @@ export default function HealthScreen() {
                 style={{ flex: 1, minHeight: 48, color: colors.text, fontSize: 16 }} returnKeyType="search" autoCorrect={false}
                 onSubmitEditing={() => { const r = results[0]; if (r) choose({ food: r.food, starter: r.starter }); }} />
             </View>
-            {foodLensAvailable && (
             <Press accessibilityRole="button" accessibilityLabel="Snap your food" onPress={() => { input.current?.blur(); setOpen({ kind: 'photo' }); }}
               style={({ pressed }) => ({ width: 52, height: 52, borderRadius: 18, backgroundColor: colors.inkBlue, alignItems: 'center', justifyContent: 'center', opacity: pressed ? 0.8 : 1 })}>
               <Svg width={24} height={24} viewBox="0 0 24 24"><Path d="M4 8h3l2-3h6l2 3h3v11H4z" fill="none" stroke={colors.onInkBlue} strokeWidth={2} strokeLinejoin="round" /><Circle cx={12} cy={13} r={3.5} fill="none" stroke={colors.onInkBlue} strokeWidth={2} /></Svg>
             </Press>
-            )}
             <Press accessibilityRole="button" accessibilityLabel="Scan a barcode" onPress={() => { input.current?.blur(); setOpen({ kind: 'scan' }); }}
               style={({ pressed }) => ({ width: 52, height: 52, borderRadius: 18, backgroundColor: colors.inkBlue, alignItems: 'center', justifyContent: 'center', opacity: pressed ? 0.8 : 1 })}>
               <Svg width={24} height={24} viewBox="0 0 24 24"><Path d="M3 7V4h3M18 4h3v3M21 17v3h-3M6 20H3v-3M7 8v8M10 8v8M13 8v8M17 8v8" fill="none" stroke={colors.onInkBlue} strokeWidth={2} strokeLinecap="round" /></Svg>
@@ -286,7 +283,8 @@ export default function HealthScreen() {
         onEditFood={open.pick.food ? () => setOpen({ kind: 'food', food: open.pick.food }) : undefined} onClose={() => setOpen(null)} />}
       {open?.kind === 'edit' && <EditLogSheet log={open.log} food={foods.find((f) => f.id === open.log.food_id) ?? null} onClose={() => setOpen(null)} />}
       {open?.kind === 'scan' && <BarcodeScanner onCode={scanned} onClose={() => setOpen(null)} />}
-      {open?.kind === 'photo' && <FoodCamera onClose={() => setOpen(null)} onPick={(search) => { setOpen(null); setQuery(search); input.current?.focus(); }} />}
+      {open?.kind === 'photo' && <FoodCamera meal={forMeal ?? mealAt(hour)} foods={foods} onClose={() => setOpen(null)}
+        onLogged={(kcal) => { setOpen(null); setForMeal(null); setLooking(`Logged ${formatKcal(kcal)} kcal from your photo.`); setTimeout(() => setLooking(null), 4000); }} />}
       {open?.kind === 'food' && <FoodSheet food={open.food} name={open.name} barcode={open.barcode} onClose={() => setOpen(null)}
         onSaved={(food) => setOpen({ kind: 'log', pick: { food, starter: null }, meal: forMeal ?? undefined })} />}
       {open?.kind === 'goals' && <GoalsSheet goals={goals} onClose={() => setOpen(null)} />}

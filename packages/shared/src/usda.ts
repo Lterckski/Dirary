@@ -124,3 +124,31 @@ export function parseOffSearch(data: unknown): StarterFood[] {
   }
   return out;
 }
+
+// ---- Food photos (the food-photo Supabase function, which asks Gemini) ----
+
+export interface PhotoFood {
+  name: string;
+  /** The portion in the photo, as estimated. */
+  grams: number;
+  kcal: number;
+  protein_g: number;
+}
+
+const PhotoReply = z.object({
+  food: z.boolean(),
+  items: z.array(z.object({ name: z.string().trim().min(1), grams: z.coerce.number(), kcal: z.coerce.number(), protein_g: z.coerce.number().default(0) })).default([]),
+});
+
+/**
+ * What the food-photo function saw: null when the reply is broken, [] when there's no food. Items with an
+ * impossible portion (over 5 kg) or more energy per gram than pure fat are dropped.
+ */
+export function parseFoodPhoto(data: unknown): PhotoFood[] | null {
+  const parsed = PhotoReply.safeParse(data);
+  if (!parsed.success) return null;
+  if (!parsed.data.food) return [];
+  return parsed.data.items
+    .filter((i) => i.grams > 0 && i.grams <= 5000 && i.kcal >= 0 && i.kcal <= i.grams * 9)
+    .map((i) => ({ name: i.name.slice(0, 80), grams: Math.round(i.grams), kcal: Math.round(i.kcal), protein_g: round1(Math.min(Math.max(0, i.protein_g), i.kcal / 4)) }));
+}
