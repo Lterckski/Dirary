@@ -17,8 +17,9 @@ const CORS = {
   'Access-Control-Allow-Methods': 'POST, OPTIONS',
 };
 
-// Tried in order: the free tier often answers "high demand" for one model while another is fine.
-const MODELS = ['gemini-3.5-flash', 'gemini-flash-lite-latest'];
+// Tried in order: the free tier often answers "high demand" for one model while another is fine. The lite
+// models with little thinking answer in 2 to 7 seconds; gemini-3.5-flash took 30 to 70, too slow to wait for.
+const MODELS = ['gemini-flash-lite-latest', 'gemini-3.1-flash-lite'];
 
 const PROMPT = `You are a nutrition assistant for someone in the Philippines. Look at this photo.
 If it shows no food or drink, answer food=false with no items.
@@ -47,10 +48,11 @@ async function ask(key: string, model: string, image: string): Promise<Response>
   return await fetch('https://generativelanguage.googleapis.com/v1beta/openai/chat/completions', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${key}` },
-    signal: AbortSignal.timeout(45_000),
+    signal: AbortSignal.timeout(20_000),
     body: JSON.stringify({
       model,
       temperature: 0.2,
+      reasoning_effort: 'low',
       response_format: { type: 'json_schema', json_schema: { name: 'meal', schema: SCHEMA } },
       messages: [{ role: 'user', content: [{ type: 'text', text: PROMPT }, { type: 'image_url', image_url: { url: `data:image/jpeg;base64,${image}` } }] }],
     }),

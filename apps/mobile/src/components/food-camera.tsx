@@ -17,6 +17,12 @@ import { PopUp } from '@/components/pop-up';
 import { logPhotoFoods, lookAtPhoto } from '@/lib/health-store';
 
 type Row = PhotoFood & { on: boolean; gramsText: string };
+/** The smallest picture size at least 1000 px across ("1920x1080"); a 50 MP photo would take ages to upload. */
+function smallSize(sizes: string[]): string | undefined {
+  const px = (s: string) => Math.min(...s.split('x').map(Number));
+  return sizes.filter((s) => /^\d+x\d+$/.test(s) && px(s) >= 1000).sort((a, b) => px(a) - px(b))[0];
+}
+
 type State = { kind: 'aim' } | { kind: 'looking' } | { kind: 'found'; rows: Row[] } | { kind: 'problem'; text: string };
 
 /** A row's figures at the grams typed (the estimate scaled), or null while the grams don't parse. */
@@ -33,6 +39,7 @@ export function FoodCamera({ meal: startMeal, foods, onLogged, onClose }: { meal
   const [state, setState] = useState<State>({ kind: 'aim' });
   const [meal, setMeal] = useState(startMeal);
   const [saving, setSaving] = useState(false);
+  const [pictureSize, setPictureSize] = useState<string>();
   const insets = useSafeAreaInsets();
 
   async function snap() {
@@ -40,9 +47,12 @@ export function FoodCamera({ meal: startMeal, foods, onLogged, onClose }: { meal
     setState({ kind: 'looking' });
     try {
       // Low quality keeps the upload small; it's plenty to tell rice from adobo.
-      const photo = await camera.current.takePictureAsync({ quality: 0.3, base64: true });
+      const photo = await camera.current.takePictureAsync({ quality: 0.5, base64: true });
       if (!photo?.base64) throw new Error('Couldn’t take the photo. Try again.');
-      const items = await lookAtPhoto(photo.base64);
+      const items = await Promise.race([
+        lookAtPhoto(photo.base64),
+        new Promise<never>((_, fail) => setTimeout(() => fail(new Error('That took too long. Check your connection and snap again.')), 45_000)),
+      ]);
       Haptics.notificationAsync(items.length ? Haptics.NotificationFeedbackType.Success : Haptics.NotificationFeedbackType.Warning).catch(() => {});
       setState(items.length ? { kind: 'found', rows: items.map((i) => ({ ...i, on: true, gramsText: String(i.grams) })) } : { kind: 'problem', text: 'Ink doesn’t see any food in that. Try again with your plate in the frame.' });
     } catch (e) {
@@ -72,7 +82,8 @@ export function FoodCamera({ meal: startMeal, foods, onLogged, onClose }: { meal
     <PopUp onClose={onClose} navigationBarTranslucent>
       <View style={{ flex: 1, backgroundColor: colors.night }}>
         {permission?.granted ? (
-          <CameraView ref={camera} style={{ flex: 1 }} facing="back" animateShutter />
+          <CameraView ref={camera} style={{ flex: 1 }} facing="back" animateShutter pictureSize={pictureSize}
+            onCameraReady={() => camera.current?.getAvailablePictureSizesAsync().then((sizes) => setPictureSize(smallSize(sizes))).catch(() => {})} />
         ) : (
           <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', padding: space[6], gap: space[4] }}>
             <Text variant="heading" style={{ textAlign: 'center' }}>Snap your food</Text>
