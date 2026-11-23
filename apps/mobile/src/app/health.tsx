@@ -24,7 +24,7 @@ import { WorkoutsTab } from '@/components/workouts-tab';
 import { ENTER, LEAVE } from '@/lib/motion';
 import { TransactionEditor } from '@/components/money-editor';
 import { readAccounts, readCategories } from '@/lib/db';
-import { useUsdaSearch } from '@/lib/usda-search';
+import { useOnlineFoods } from '@/lib/online-foods';
 
 type Pick = { food: Food | null; starter: StarterFood | null };
 type Open =
@@ -63,9 +63,9 @@ export default function HealthScreen() {
   const coach = foodCoach(totals, goals, hour);
   const again = useMemo(() => recentFoods(logs, foods), [logs, foods]);
   const results = useMemo(() => searchFoods(query, foods, STARTER_FOODS, 6), [query, foods]);
-  const usda = useUsdaSearch(query);
-  // USDA foods you've already saved show up under your own foods instead.
-  const remote = usda.results.filter((u) => !foods.some((f) => f.source_ref === u.key)).slice(0, 6);
+  const online = useOnlineFoods(query);
+  // Online foods you've already saved show up under your own foods instead.
+  const remote = online.results.filter((u) => !foods.some((f) => f.source_ref === u.key));
   const glasses = glassesOn(water, today);
   const glassGoal = goals?.water_glasses ?? 8;
   const kcalLeft = goals?.kcal_target ? Math.round(goals.kcal_target - totals.kcal) : null;
@@ -221,10 +221,10 @@ export default function HealthScreen() {
                   <Press key={u.key} accessibilityRole="button" onPress={() => choose({ food: null, starter: u })}
                     style={({ pressed }) => ({ flexDirection: 'row', alignItems: 'center', gap: space[3], minHeight: 48, paddingHorizontal: space[3], borderRadius: 14, backgroundColor: pressed ? colors.surface : 'transparent' })}>
                     <Text weight="semi" style={{ flex: 1 }} numberOfLines={2}>{u.name}</Text>
-                    <Text variant="small" weight="bold" style={{ color: colors.muted, letterSpacing: 0.8 }}>USDA</Text>
+                    <Text variant="small" weight="bold" style={{ color: colors.muted, letterSpacing: 0.8 }}>{u.source === 'off' ? 'OFF' : FOOD_SOURCE_LABEL[u.source].toUpperCase()}</Text>
                   </Press>
                 ))}
-                {(usda.searching || usda.problem) && <Text variant="label" style={{ color: colors.faint, paddingHorizontal: space[3], paddingVertical: space[2] }}>{usda.problem ?? 'Searching USDA…'}</Text>}
+                {(online.searching || online.problem) && <Text variant="label" style={{ color: colors.faint, paddingHorizontal: space[3], paddingVertical: space[2] }}>{online.problem ?? 'Searching online…'}</Text>}
                 <Press accessibilityRole="button" onPress={() => { const name = query.trim(); setQuery(''); input.current?.blur(); setOpen({ kind: 'food', food: null, name }); }}
                   style={({ pressed }) => ({ minHeight: 48, justifyContent: 'center', paddingHorizontal: space[3], borderRadius: 14, backgroundColor: pressed ? colors.surface : 'transparent' })}>
                   <Text weight="semi" muted numberOfLines={1}>+ New food “{query.trim()}”</Text>

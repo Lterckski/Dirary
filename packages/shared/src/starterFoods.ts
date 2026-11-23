@@ -8,6 +8,7 @@
  * Add your own when you log; they are saved with the food.
  */
 import type { StarterFood } from './health';
+import { PHILFCT_ROWS } from './philfctFoods';
 
 const fct = (key: string, name: string, kcal: number, protein: number, servings: StarterFood['servings'] = []): StarterFood =>
   ({ key: `philfct:${key}`, name, source: 'philfct', kcal_per_100g: kcal, protein_per_100g: protein, servings });
@@ -15,7 +16,7 @@ const fct = (key: string, name: string, kcal: number, protein: number, servings:
 const CUP_RICE = [{ label: '1 cup', grams: 158 }];
 const EGG = [{ label: '1 egg', grams: 50 }];
 
-export const STARTER_FOODS: readonly StarterFood[] = [
+const PICKED: readonly StarterFood[] = [
   // Rice and rice dishes
   fct('rice-well-milled-boiled', 'Rice, white, boiled (kanin)', 129, 2.1, CUP_RICE),             // Juan Nutrisyon, from PhilFCT "Rice, well-milled, boiled"
   fct('rice-well-milled-fried', 'Rice, fried (sinangag)', 187, 2.6, CUP_RICE),                  // Juan Nutrisyon, from PhilFCT "Rice, well-milled, fried"
@@ -52,4 +53,10 @@ export const STARTER_FOODS: readonly StarterFood[] = [
   fct('E008', 'Banana, cavendish', 104, 0.9),                                 // report/3590
   fct('E101', 'Banana cue', 183, 2),                                          // report/3683
   fct('E102', 'Turon', 259, 2.4),                                             // report/3684
+];
+
+/** The picked foods above (friendly names, servings), then the rest of PhilFCT, about 1,500 foods. */
+export const STARTER_FOODS: readonly StarterFood[] = [
+  ...PICKED,
+  ...PHILFCT_ROWS.filter(([id]) => !PICKED.some((f) => f.key === `philfct:${id}`)).map(([id, name, kcal, protein]) => fct(id, name, kcal, protein)),
 ];

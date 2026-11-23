@@ -119,9 +119,15 @@ describe('starter foods', async () => {
     expect(new Set(STARTER_FOODS.map((f) => f.key)).size).toBe(STARTER_FOODS.length);
     for (const f of STARTER_FOODS) {
       expect(f.kcal_per_100g).toBeGreaterThan(0);
-      expect(f.kcal_per_100g).toBeLessThan(900);
+      expect(f.kcal_per_100g).toBeLessThanOrEqual(900); // pure oil is 900
       expect(f.protein_per_100g * 4).toBeLessThan(f.kcal_per_100g + 1); // protein can't hold more energy than the food
     }
   });
   it('are found by search', () => expect(searchFoods('sinangag', [], STARTER_FOODS)[0]?.name).toBe('Rice, fried (sinangag)'));
+  it('include the rest of PhilFCT, Filipino names too, picked foods first', () => {
+    expect(STARTER_FOODS.length).toBeGreaterThan(1000);
+    expect(searchFoods('rice', [], STARTER_FOODS)[0]?.name).toBe('Rice, white, boiled (kanin)');
+    expect(searchFoods('kare kare', [], STARTER_FOODS).map((f) => f.name)).toContain('Beef kare-kare, canned');
+    expect(searchFoods('sotanghon', [], STARTER_FOODS)[0]?.name).toBe('Noodles, mung bean starch (Sotanghon)');
+  });
 });
